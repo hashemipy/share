@@ -245,6 +245,26 @@ class Inventory_Sync_Manager {
         if (is_wp_error($product1)) {
             return $product1;
         }
+
+        // اگر محصول متغیّر است، ابتدا مطمئن شو همه ویژگی‌های global در سایت ۲ وجود دارند
+        // (اگر وجود نداشتند با همون نام و نامک سایت ۱ ساخته می‌شوند)
+        if (($product1['type'] ?? 'simple') === 'variable') {
+            $ensure_result = $this->ensure_attributes_exist($product1['attributes'] ?? []);
+            if (is_wp_error($ensure_result)) {
+                Inventory_Sync_Database::insert_log(
+                    $site1_product_id,
+                    $product1['name'] ?? '',
+                    'ensure_attributes',
+                    'سایت 1',
+                    'سایت 2',
+                    '',
+                    '',
+                    'failed',
+                    $ensure_result->get_error_message()
+                );
+                return $ensure_result;
+            }
+        }
         
         // ساخت محصول والد (ساده یا متغیّر)
         $product_data = $this->prepare_transfer_data($product1);
@@ -306,6 +326,151 @@ class Inventory_Sync_Manager {
         return $result;
     }
     
+    /**
+     * اطمینان از وجود ویژگی‌های global در سایت ۲
+     * 
+     * برای هر ویژگی‌ای که variation=true دارد (یعنی global attribute است):
+     *   1. بررسی می‌کند آیا در سایت ۲ وجود دارد (با مقایسه slug)
+     *   2. اگر وجود ندارد، آن را با همان name و slug سایت ۱ می‌سازد
+     *   3. term های (مقادیر) هر ویژگی را هم بررسی و در صورت لزوم می‌سازد
+     * 
+     * @param array $attributes ویژگی‌های محصول از سایت ۱
+     * @return true|WP_Error
+     */
+    private function ensure_attributes_exist($attributes) {
+        if (empty($attributes) || ! is_array($attributes)) {
+            return true;
+        }
+
+        // دریافت همه ویژگی‌های سراسری سایت ۲
+        $site2_attrs_raw = $this->site2_api->get_all_attributes();
+        if (is_wp_error($site2_attrs_raw)) {
+            return $site2_attrs_raw;
+        }
+
+        // ایجاد یک map از slug → id برای دسترسی سریع
+        $site2_attr_map = [];
+        if (is_array($site2_attrs_raw)) {
+            foreach ($site2_attrs_raw as $attr) {
+                if (! empty($attr['slug'])) {
+                    $site2_attr_map[$attr['slug']] = $attr['id'];
+                }
+            }
+        }
+
+        foreach ($attributes as $attr) {
+            // فقط ویژگی‌های global (variation=true یا id!=0) را پردازش می‌کنیم
+            // ویژگی‌های محلی محصول (id=0 و variation=false) نیاز به ساخت ندارند
+            if (empty($attr['name'])) {
+                continue;
+            }
+
+            $attr_name = $attr['name'];
+            // WooCommerce برای global attributes نامک را به صورت "pa_{slug}" می‌سازد
+            // slug خام را از نام ویژگی یا slug موجود استخراج می‌کنیم
+            $raw_slug = isset($attr['slug']) ? $attr['slug'] : sanitize_title($attr_name);
+            // اگر WooCommerce پیشوند "pa_" را اضافه کرده بود، آن را نگه می‌داریم
+            // وگرنه WooCommerce خودش اضافه می‌کند
+            $lookup_slug = $raw_slug;
+
+            // بررسی وجود ویژگی در سایت ۲ (با و بدون پیشوند pa_)
+            $found_id = null;
+            if (isset($site2_attr_map[$lookup_slug])) {
+                $found_id = $site2_attr_map[$lookup_slug];
+            } elseif (strpos($lookup_slug, 'pa_') === 0) {
+                // slug بدون پیشوند را هم چک کن
+                $slug_without_prefix = substr($lookup_slug, 3);
+                if (isset($site2_attr_map[$slug_without_prefix])) {
+                    $found_id = $site2_attr_map[$slug_without_prefix];
+                }
+            } else {
+                // slug با پیشوند pa_ را هم چک کن
+                if (isset($site2_attr_map['pa_' . $lookup_slug])) {
+                    $found_id = $site2_attr_map['pa_' . $lookup_slug];
+                }
+            }
+
+            // اگر ویژگی در سایت ۲ وجود ندارد، آن را بساز
+            if ($found_id === null) {
+                $create_result = $this->site2_api->create_attribute($attr_name, $raw_slug);
+                if (is_wp_error($create_result)) {
+                    // اگر ویژگی از قبل وجود داشت (409 conflict)، ادامه بده
+                    $error_data = $create_result->get_error_data();
+                    $status = is_array($error_data) ? ($error_data['status'] ?? 0) : 0;
+                    if ($status !== 409) {
+                        return $create_result;
+                    }
+                    // دوباره لیست را بگیر تا id جدید را پیدا کنیم
+                    $refreshed = $this->site2_api->get_all_attributes();
+                    if (! is_wp_error($refreshed)) {
+                        foreach ($refreshed as $ra) {
+                            if (! empty($ra['slug'])) {
+                                $site2_attr_map[$ra['slug']] = $ra['id'];
+                            }
+                        }
+                    }
+                    $found_id = $site2_attr_map[$raw_slug]
+                        ?? $site2_attr_map['pa_' . $raw_slug]
+                        ?? null;
+                } else {
+                    $found_id = $create_result['id'] ?? null;
+                    if ($found_id) {
+                        $site2_attr_map[$create_result['slug'] ?? $raw_slug] = $found_id;
+                    }
+                }
+            }
+
+            // اگر id پیدا شد، term ها (مقادیر) ویژگی را هم بررسی و بساز
+            if ($found_id && ! empty($attr['options']) && is_array($attr['options'])) {
+                $this->ensure_attribute_terms_exist($found_id, $attr['options']);
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * اطمینان از وجود term های یک ویژگی در سایت ۲
+     * 
+     * @param int   $attribute_id  شناسه ویژگی در سایت ۲
+     * @param array $options       لیست مقادیر (term ها) که باید وجود داشته باشند
+     */
+    private function ensure_attribute_terms_exist($attribute_id, $options) {
+        // دریافت term های موجود در سایت ۲
+        $existing_terms_raw = $this->site2_api->get_attribute_terms($attribute_id);
+        if (is_wp_error($existing_terms_raw)) {
+            return; // اگر خطا بود، ادامه می‌دهیم (WooCommerce خودش term ها را می‌سازد)
+        }
+
+        // ایجاد map از name → id و slug → id
+        $existing_names = [];
+        $existing_slugs = [];
+        if (is_array($existing_terms_raw)) {
+            foreach ($existing_terms_raw as $term) {
+                if (! empty($term['name'])) {
+                    $existing_names[mb_strtolower($term['name'])] = true;
+                }
+                if (! empty($term['slug'])) {
+                    $existing_slugs[$term['slug']] = true;
+                }
+            }
+        }
+
+        // برای هر option ای که وجود ندارد، آن را بساز
+        foreach ($options as $option) {
+            if (empty($option)) {
+                continue;
+            }
+            $option_lower = mb_strtolower($option);
+            $option_slug  = sanitize_title($option);
+
+            if (! isset($existing_names[$option_lower]) && ! isset($existing_slugs[$option_slug])) {
+                $this->site2_api->create_attribute_term($attribute_id, $option, $option_slug);
+                // خطاها را نادیده می‌گیریم (WooCommerce در صورت تکرار conflict می‌دهد)
+            }
+        }
+    }
+
     /**
      * انتقال متغیّرهای یک محصول متغیّر از سایت ۱ به محصول والد ساخته‌شده در سایت ۲
      * 

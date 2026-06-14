@@ -90,6 +90,65 @@ class Inventory_Sync_API {
         $endpoint = '/wp-json/wc/v3/products/' . intval($product_id) . '/variations/batch';
         return $this->request('POST', $endpoint, ['create' => $variations]);
     }
+
+    /**
+     * دریافت همه ویژگی‌های سراسری (global attributes) سایت
+     * 
+     * @return array|WP_Error لیست ویژگی‌ها
+     */
+    public function get_all_attributes() {
+        $endpoint = '/wp-json/wc/v3/products/attributes';
+        $params = ['per_page' => 100];
+        return $this->request('GET', $endpoint, [], $params);
+    }
+
+    /**
+     * ساخت یک ویژگی سراسری جدید در سایت
+     * 
+     * @param string $name  نام نمایشی ویژگی
+     * @param string $slug  نامک (slug) ویژگی - همان نامک سایت ۱
+     * @return array|WP_Error ویژگی ساخته‌شده
+     */
+    public function create_attribute($name, $slug) {
+        $endpoint = '/wp-json/wc/v3/products/attributes';
+        $data = [
+            'name'         => $name,
+            'slug'         => $slug,
+            'type'         => 'select',
+            'order_by'     => 'menu_order',
+            'has_archives' => false,
+        ];
+        return $this->request('POST', $endpoint, $data);
+    }
+
+    /**
+     * دریافت همه term های یک ویژگی سراسری
+     * 
+     * @param int $attribute_id شناسه ویژگی
+     * @return array|WP_Error لیست term ها
+     */
+    public function get_attribute_terms($attribute_id) {
+        $endpoint = '/wp-json/wc/v3/products/attributes/' . intval($attribute_id) . '/terms';
+        $params = ['per_page' => 100];
+        return $this->request('GET', $endpoint, [], $params);
+    }
+
+    /**
+     * ساخت یک term جدید برای یک ویژگی سراسری
+     * 
+     * @param int    $attribute_id شناسه ویژگی
+     * @param string $name         نام term
+     * @param string $slug         نامک term
+     * @return array|WP_Error term ساخته‌شده
+     */
+    public function create_attribute_term($attribute_id, $name, $slug = '') {
+        $endpoint = '/wp-json/wc/v3/products/attributes/' . intval($attribute_id) . '/terms';
+        $data = [
+            'name' => $name,
+            'slug' => $slug ?: sanitize_title($name),
+        ];
+        return $this->request('POST', $endpoint, $data);
+    }
     
     /**
      * ارسال درخواست HTTP
