@@ -380,14 +380,17 @@ class Inventory_Sync_Manager {
         }
         
         // دسته‌بندی‌ها (فقط اگر موجود باشند)
-        if (!empty($product1['categories'])) {
-            $data['categories'] = $product1['categories'];
-        }
+        // توجه: دسته‌بندی‌ها را بدون ارسال می‌کنیم چون ID های محلی هستند
+        // مدیر باید بعداً دسته‌بندی‌ها را دستی اضافه کند
+        // if (!empty($product1['categories'])) {
+        //     $data['categories'] = $product1['categories'];
+        // }
         
         // تگ‌ها (فقط اگر موجود باشند)
-        if (!empty($product1['tags'])) {
-            $data['tags'] = $product1['tags'];
-        }
+        // همان مشکل دسته‌بندی‌ها
+        // if (!empty($product1['tags'])) {
+        //     $data['tags'] = $product1['tags'];
+        // }
         
         // ویژگی‌ها (فقط اگر موجود باشند)
         if (!empty($product1['attributes'])) {
