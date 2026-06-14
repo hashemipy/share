@@ -65,7 +65,20 @@ class Inventory_Sync_API {
      */
     public function create_product($product_data) {
         $endpoint = '/wp-json/wc/v3/products';
-        return $this->request('POST', $endpoint, $product_data);
+        
+        // لاگ کن که چه داده‌ای ارسال می‌شود
+        error_log('[Inventory Sync API] Creating product with: ' . wp_json_encode($product_data));
+        
+        $result = $this->request('POST', $endpoint, $product_data);
+        
+        // لاگ نتیجه
+        if (is_wp_error($result)) {
+            error_log('[Inventory Sync API] Error: ' . $result->get_error_message());
+        } else {
+            error_log('[Inventory Sync API] Success: Product created with ID ' . ($result['id'] ?? 'unknown'));
+        }
+        
+        return $result;
     }
     
     /**

@@ -335,21 +335,20 @@ class Inventory_Sync_Manager {
     
     /**
      * آماده‌سازی داده‌های انتقالی
-     * تصاویر را دانلود می‌کند و بدون ID ارسال می‌کند
+     * تصاویر را به صورت URL ارسال می‌کند (بدون ID)
      */
     private function prepare_transfer_data($product1) {
         // تصاویر را به صورت URL تهیه کن (نه ID)
         $images = [];
         if (!empty($product1['images'])) {
             foreach ($product1['images'] as $image) {
-                // اگر image یک آبجکت است، src را استخراج کن
                 if (is_array($image) && isset($image['src'])) {
+                    // فقط src را شامل کن، id و فیلدهای دیگر را حذف کن
                     $images[] = [
                         'src' => $image['src']
                     ];
-                }
-                // اگر فقط URL است
-                elseif (is_string($image)) {
+                } elseif (is_string($image)) {
+                    // اگر فقط URL است
                     $images[] = [
                         'src' => $image
                     ];
@@ -357,22 +356,48 @@ class Inventory_Sync_Manager {
             }
         }
         
-        return [
-            'name' => $product1['name'] ?? '',
-            'description' => $product1['description'] ?? '',
-            'short_description' => $product1['short_description'] ?? '',
-            'sku' => $product1['sku'] ?? '',
-            'price' => $product1['price'] ?? '',
-            'regular_price' => $product1['regular_price'] ?? '',
-            'sale_price' => $product1['sale_price'] ?? '',
-            'images' => $images, // فقط URL ها، نه ID ها
-            'categories' => $product1['categories'] ?? [],
-            'tags' => $product1['tags'] ?? [],
-            'attributes' => $product1['attributes'] ?? [],
-            'stock_quantity' => $product1['stock_quantity'] ?? 0,
-            'manage_stock' => $product1['manage_stock'] ?? false,
+        $data = [
+            'name' => sanitize_text_field($product1['name'] ?? ''),
+            'description' => wp_kses_post($product1['description'] ?? ''),
+            'short_description' => wp_kses_post($product1['short_description'] ?? ''),
+            'sku' => sanitize_text_field($product1['sku'] ?? ''),
+            'stock_quantity' => intval($product1['stock_quantity'] ?? 0),
+            'manage_stock' => (bool) ($product1['manage_stock'] ?? false),
             'status' => 'draft' // منتشر نشود تا مدیر بررسی کند
         ];
+        
+        // تصاویر را فقط اگر موجود باشند
+        if (!empty($images)) {
+            $data['images'] = $images;
+        }
+        
+        // قیمت ها (فقط اگر موجود و غیرخالی باشند)
+        if (!empty($product1['regular_price'])) {
+            $data['regular_price'] = $product1['regular_price'];
+        }
+        if (!empty($product1['sale_price'])) {
+            $data['sale_price'] = $product1['sale_price'];
+        }
+        
+        // دسته‌بندی‌ها (فقط اگر موجود باشند)
+        if (!empty($product1['categories'])) {
+            $data['categories'] = $product1['categories'];
+        }
+        
+        // تگ‌ها (فقط اگر موجود باشند)
+        if (!empty($product1['tags'])) {
+            $data['tags'] = $product1['tags'];
+        }
+        
+        // ویژگی‌ها (فقط اگر موجود باشند)
+        if (!empty($product1['attributes'])) {
+            $data['attributes'] = $product1['attributes'];
+        }
+        
+        // لاگ داده‌های ارسالی برای debugging
+        error_log('[Inventory Sync] Transferring product with data: ' . wp_json_encode($data));
+        
+        return $data;
     }
     
     /**
