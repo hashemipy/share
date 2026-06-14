@@ -96,27 +96,43 @@ class Inventory_Sync_API {
         }
         
         $attempt = 0;
+        $last_error = null;
+        
         while ($attempt < $this->retry_count) {
             $response = wp_remote_request($url, $args);
             
             if (!is_wp_error($response)) {
                 $status_code = wp_remote_retrieve_response_code($response);
+                $body = wp_remote_retrieve_body($response);
                 
                 if (in_array($status_code, [200, 201, 204])) {
-                    $body = wp_remote_retrieve_body($response);
-                    return json_decode($body, true);
+                    // Success - return decoded response
+                    if (empty($body)) {
+                        return []; // Empty response is valid for 204 No Content
+                    }
+                    $decoded = json_decode($body, true);
+                    return $decoded !== null ? $decoded : [];
                 } elseif (in_array($status_code, [400, 401, 403, 404])) {
                     // Don't retry on client errors
-                    return new WP_Error('api_error', wp_remote_retrieve_body($response), ['status' => $status_code]);
+                    return new WP_Error(
+                        'api_error', 
+                        'API Error (' . $status_code . '): ' . $body, 
+                        ['status' => $status_code]
+                    );
                 }
+                
+                // Server error - may retry
+                $last_error = new WP_Error('api_error', 'API returned status ' . $status_code);
+            } else {
+                $last_error = $response;
             }
             
             $attempt++;
             if ($attempt < $this->retry_count) {
-                sleep(pow(2, $attempt)); // Exponential backoff
+                sleep(pow(2, $attempt)); // Exponential backoff: 2s, 4s, 8s
             }
         }
         
-        return is_wp_error($response) ? $response : new WP_Error('api_timeout', 'درخواست بیش از حد زمان طول کشید');
+        return $last_error ?? new WP_Error('api_timeout', 'درخواست بیش از حد زمان طول کشید');
     }
 }

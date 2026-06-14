@@ -238,23 +238,30 @@ class Inventory_Sync_Manager {
     /**
      * انتقال محصول
      */
-    public function transfer_product($site1_product_id, $site2_product_id = null) {
+    public function transfer_product($site1_product_id) {
         // Get product from Site 1
         $product1 = $this->site1_api->get_product($site1_product_id);
         
         if (is_wp_error($product1)) {
+            Inventory_Sync_Database::insert_log(
+                $site1_product_id,
+                '',
+                'transfer_product',
+                'سایت 1',
+                'سایت 2',
+                '',
+                '',
+                'failed',
+                'دریافت محصول از سایت 1 ناموفق: ' . $product1->get_error_message()
+            );
             return $product1;
         }
         
-        if ($site2_product_id) {
-            // Update existing product
-            $product_data = $this->prepare_transfer_data($product1);
-            $result = $this->site2_api->create_product($product_data);
-        } else {
-            // Create new product
-            $product_data = $this->prepare_transfer_data($product1);
-            $result = $this->site2_api->create_product($product_data);
-        }
+        // Prepare product data for transfer
+        $product_data = $this->prepare_transfer_data($product1);
+        
+        // Create new product on Site 2
+        $result = $this->site2_api->create_product($product_data);
         
         if (is_wp_error($result)) {
             Inventory_Sync_Database::insert_log(
@@ -266,18 +273,50 @@ class Inventory_Sync_Manager {
                 '',
                 '',
                 'failed',
-                $result->get_error_message()
+                'ایجاد محصول در سایت 2 ناموفق: ' . $result->get_error_message()
             );
             return $result;
         }
         
+        // Verify that result has an ID
+        if (empty($result['id'])) {
+            $error_msg = 'محصول ایجاد شد اما شناسه برگردانده نشد';
+            Inventory_Sync_Database::insert_log(
+                $site1_product_id,
+                $product1['name'] ?? '',
+                'transfer_product',
+                'سایت 1',
+                'سایت 2',
+                '',
+                '',
+                'failed',
+                $error_msg
+            );
+            return new WP_Error('invalid_response', $error_msg);
+        }
+        
         // Save mapping
-        $this->save_mapping(
+        $mapping_result = $this->save_mapping(
             $site1_product_id,
             $result['id'],
             $product1['sku'] ?? '',
             $result['sku'] ?? ''
         );
+        
+        if (is_wp_error($mapping_result)) {
+            Inventory_Sync_Database::insert_log(
+                $site1_product_id,
+                $product1['name'] ?? '',
+                'transfer_product',
+                'سایت 1',
+                'سایت 2',
+                '',
+                $result['id'],
+                'failed',
+                'ذخیره نقشه‌برداری ناموفق: ' . $mapping_result->get_error_message()
+            );
+            return $mapping_result;
+        }
         
         // Log success
         Inventory_Sync_Database::insert_log(
@@ -319,7 +358,7 @@ class Inventory_Sync_Manager {
     private function save_mapping($site1_id, $site2_id, $site1_sku, $site2_sku) {
         global $wpdb;
         
-        $wpdb->insert(
+        $result = $wpdb->insert(
             $wpdb->prefix . 'inventory_sync_mapping',
             [
                 'site1_product_id' => $site1_id,
@@ -330,5 +369,11 @@ class Inventory_Sync_Manager {
                 'sync_status' => 'synced'
             ]
         );
+        
+        if ($result === false) {
+            return new WP_Error('mapping_error', 'خطا در ذخیره نقشه‌برداری: ' . $wpdb->last_error);
+        }
+        
+        return true;
     }
 }

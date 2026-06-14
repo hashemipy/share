@@ -237,17 +237,35 @@ class Inventory_Sync_Admin {
         
         $sync_manager = Inventory_Sync_Manager::get_instance();
         $results = [];
+        $successful_count = 0;
+        $failed_count = 0;
         
         foreach ($product_ids as $product_id) {
             $result = $sync_manager->transfer_product($product_id);
+            $is_success = !is_wp_error($result);
+            
+            if ($is_success) {
+                $successful_count++;
+            } else {
+                $failed_count++;
+            }
+            
             $results[] = [
                 'product_id' => $product_id,
-                'success' => !is_wp_error($result),
+                'success' => $is_success,
                 'message' => is_wp_error($result) ? $result->get_error_message() : 'موفق'
             ];
         }
         
-        wp_send_json_success($results);
+        // Return detailed results
+        wp_send_json_success([
+            'results' => $results,
+            'summary' => [
+                'total' => count($product_ids),
+                'successful' => $successful_count,
+                'failed' => $failed_count
+            ]
+        ]);
     }
     
     public function ajax_get_logs() {

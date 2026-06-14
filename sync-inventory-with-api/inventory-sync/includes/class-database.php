@@ -51,21 +51,27 @@ class Inventory_Sync_Database {
     public static function insert_log($product_id, $product_name, $action, $source_site, $target_site, $old_value, $new_value, $status, $error = '') {
         global $wpdb;
         
-        return $wpdb->insert(
+        $result = $wpdb->insert(
             $wpdb->prefix . 'inventory_sync_logs',
             [
-                'product_id' => $product_id,
-                'product_name' => $product_name,
-                'action' => $action,
-                'source_site' => $source_site,
-                'target_site' => $target_site,
-                'old_value' => $old_value,
-                'new_value' => $new_value,
-                'status' => $status,
-                'error_message' => $error
+                'product_id' => (int) $product_id,
+                'product_name' => (string) $product_name,
+                'action' => (string) $action,
+                'source_site' => (string) $source_site,
+                'target_site' => (string) $target_site,
+                'old_value' => (string) $old_value,
+                'new_value' => (string) $new_value,
+                'status' => (string) $status,
+                'error_message' => (string) $error
             ],
             ['%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s']
         );
+        
+        if ($result === false) {
+            error_log('Inventory Sync Log Error: ' . $wpdb->last_error);
+        }
+        
+        return $result;
     }
     
     public static function get_mapping($site1_id = null) {

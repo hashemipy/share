@@ -326,18 +326,42 @@
                 },
                 success: (response) => {
                     if (response.success) {
-                        const results = response.data;
-                        const successful = results.filter(r => r.success).length;
-                        const failed = results.filter(r => !r.success).length;
+                        const data = response.data;
                         
-                        const message = `✓ انتقال کامل شد!\nموفق: ${successful}\nناموفق: ${failed}`;
+                        // Handle both old format and new format
+                        let successful = 0;
+                        let failed = 0;
+                        
+                        if (data.summary) {
+                            // New format with summary
+                            successful = data.summary.successful;
+                            failed = data.summary.failed;
+                            
+                            // Log failed products for debugging
+                            if (data.results) {
+                                const failedResults = data.results.filter(r => !r.success);
+                                if (failedResults.length > 0) {
+                                    console.log('Failed transfers:', failedResults);
+                                }
+                            }
+                        } else if (Array.isArray(data)) {
+                            // Old format - array of results
+                            successful = data.filter(r => r.success).length;
+                            failed = data.filter(r => !r.success).length;
+                        }
+                        
+                        const message = `انتقال کامل شد!\n✓ موفق: ${successful}\n✗ ناموفق: ${failed}`;
                         alert(message);
                         
+                        // Reload the table
                         this.loadTransferProducts();
+                    } else {
+                        alert('✗ خطا: ' + response.data);
                     }
                 },
-                error: () => {
-                    alert('✗ ' + inventorySyncData.i18n.error);
+                error: (xhr, status, error) => {
+                    console.error('Transfer error:', error);
+                    alert('✗ خطا در انتقال: ' + inventorySyncData.i18n.error);
                 },
                 complete: () => {
                     $progress.hide();
