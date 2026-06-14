@@ -335,14 +335,37 @@ class Inventory_Sync_Manager {
     
     /**
      * آماده‌سازی داده‌های انتقالی
+     * تصاویر را دانلود می‌کند و بدون ID ارسال می‌کند
      */
     private function prepare_transfer_data($product1) {
+        // تصاویر را به صورت URL تهیه کن (نه ID)
+        $images = [];
+        if (!empty($product1['images'])) {
+            foreach ($product1['images'] as $image) {
+                // اگر image یک آبجکت است، src را استخراج کن
+                if (is_array($image) && isset($image['src'])) {
+                    $images[] = [
+                        'src' => $image['src']
+                    ];
+                }
+                // اگر فقط URL است
+                elseif (is_string($image)) {
+                    $images[] = [
+                        'src' => $image
+                    ];
+                }
+            }
+        }
+        
         return [
             'name' => $product1['name'] ?? '',
             'description' => $product1['description'] ?? '',
             'short_description' => $product1['short_description'] ?? '',
             'sku' => $product1['sku'] ?? '',
-            'images' => $product1['images'] ?? [],
+            'price' => $product1['price'] ?? '',
+            'regular_price' => $product1['regular_price'] ?? '',
+            'sale_price' => $product1['sale_price'] ?? '',
+            'images' => $images, // فقط URL ها، نه ID ها
             'categories' => $product1['categories'] ?? [],
             'tags' => $product1['tags'] ?? [],
             'attributes' => $product1['attributes'] ?? [],
