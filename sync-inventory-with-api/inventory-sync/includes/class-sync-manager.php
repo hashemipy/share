@@ -246,15 +246,9 @@ class Inventory_Sync_Manager {
             return $product1;
         }
         
-        if ($site2_product_id) {
-            // Update existing product
-            $product_data = $this->prepare_transfer_data($product1);
-            $result = $this->site2_api->create_product($product_data);
-        } else {
-            // Create new product
-            $product_data = $this->prepare_transfer_data($product1);
-            $result = $this->site2_api->create_product($product_data);
-        }
+        // ساخت محصول والد (ساده یا متغیّر)
+        $product_data = $this->prepare_transfer_data($product1);
+        $result = $this->site2_api->create_product($product_data);
         
         if (is_wp_error($result)) {
             Inventory_Sync_Database::insert_log(
@@ -269,6 +263,24 @@ class Inventory_Sync_Manager {
                 $result->get_error_message()
             );
             return $result;
+        }
+        
+        // اگر محصول متغیّر است، متغیّرها (variations) را هم منتقل کن
+        if (($product1['type'] ?? 'simple') === 'variable') {
+            $variation_result = $this->transfer_variations($site1_product_id, $result['id'], $product1['name'] ?? '');
+            if (is_wp_error($variation_result)) {
+                Inventory_Sync_Database::insert_log(
+                    $site1_product_id,
+                    $product1['name'] ?? '',
+                    'transfer_variations',
+                    'سایت 1',
+                    'سایت 2',
+                    '',
+                    $result['id'],
+                    'failed',
+                    $variation_result->get_error_message()
+                );
+            }
         }
         
         // Save mapping
@@ -295,25 +307,162 @@ class Inventory_Sync_Manager {
     }
     
     /**
+     * انتقال متغیّرهای یک محصول متغیّر از سایت ۱ به محصول والد ساخته‌شده در سایت ۲
+     * 
+     * متغیّرها در WooCommerce بخشی از آبجکت محصول نیستند و باید جداگانه
+     * از endpoint /products/{id}/variations دریافت و در مقصد ساخته شوند.
+     */
+    private function transfer_variations($site1_product_id, $site2_parent_id, $product_name) {
+        $all_variations = [];
+        $page = 1;
+        
+        // دریافت همه‌ی متغیّرها با صفحه‌بندی
+        do {
+            $variations = $this->site1_api->get_product_variations($site1_product_id, 100, $page);
+            
+            if (is_wp_error($variations)) {
+                return $variations;
+            }
+            
+            if (empty($variations) || ! is_array($variations)) {
+                break;
+            }
+            
+            $all_variations = array_merge($all_variations, $variations);
+            $page++;
+        } while (count($variations) === 100);
+        
+        if (empty($all_variations)) {
+            return true;
+        }
+        
+        // آماده‌سازی داده‌ی هر متغیّر برای مقصد
+        $variations_to_create = [];
+        foreach ($all_variations as $variation) {
+            $variations_to_create[] = $this->prepare_variation_data($variation);
+        }
+        
+        // ساخت گروهی متغیّرها در سایت مقصد
+        return $this->site2_api->batch_create_variations($site2_parent_id, $variations_to_create);
+    }
+    
+    /**
+     * آماده‌سازی داده‌ی یک متغیّر برای انتقال به سایت مقصد
+     * (حذف id ها و ارجاع‌های مخصوص سایت مبدأ)
+     */
+    private function prepare_variation_data($variation) {
+        $data = [
+            'sku' => $variation['sku'] ?? '',
+            'regular_price' => isset($variation['regular_price']) ? (string) $variation['regular_price'] : '',
+            'sale_price' => isset($variation['sale_price']) ? (string) $variation['sale_price'] : '',
+            'description' => $variation['description'] ?? '',
+            'manage_stock' => $variation['manage_stock'] ?? false,
+            'stock_quantity' => isset($variation['stock_quantity']) ? intval($variation['stock_quantity']) : null,
+            'stock_status' => $variation['stock_status'] ?? 'instock',
+            // ویژگی‌های متغیّر فقط با name/option (بدون id سایت مبدأ) تا با ویژگی‌های والد مطابقت کند
+            'attributes' => $this->prepare_variation_attributes($variation['attributes'] ?? []),
+        ];
+        
+        // اگر مدیریت موجودی فعال نیست، stock_quantity را نفرست
+        if (empty($data['manage_stock'])) {
+            unset($data['stock_quantity']);
+        }
+        
+        // تصویر متغیّر (فقط src)
+        if (! empty($variation['image']['src'])) {
+            $data['image'] = ['src' => $variation['image']['src']];
+        }
+        
+        return $data;
+    }
+    
+    /**
+     * پاک‌سازی ویژگی‌های یک متغیّر: حذف id و نگه‌داشتن name/option
+     */
+    private function prepare_variation_attributes($attributes) {
+        if (empty($attributes) || ! is_array($attributes)) {
+            return [];
+        }
+        
+        $clean = [];
+        foreach ($attributes as $attr) {
+            if (empty($attr['name'])) {
+                continue;
+            }
+            $clean[] = [
+                'name'   => $attr['name'],
+                'option' => $attr['option'] ?? '',
+            ];
+        }
+        
+        return $clean;
+    }
+    
+    /**
      * آماده‌سازی داده‌های انتقالی
      */
     private function prepare_transfer_data($product1) {
-        return [
+        $type = $product1['type'] ?? 'simple';
+        
+        $data = [
             'name' => $product1['name'] ?? '',
+            // نوع محصول را منتقل کن (simple / variable / ...) وگرنه همه ساده ساخته می‌شوند
+            'type' => $type,
             'description' => $product1['description'] ?? '',
             'short_description' => $product1['short_description'] ?? '',
             'sku' => $product1['sku'] ?? '',
+            // قیمت‌ها را منتقل کن (برای محصول متغیّر قیمت روی خود متغیّرها تنظیم می‌شود)
+            'regular_price' => isset($product1['regular_price']) ? (string) $product1['regular_price'] : '',
+            'sale_price' => isset($product1['sale_price']) ? (string) $product1['sale_price'] : '',
             // فقط آدرس (src) تصاویر را می‌فرستیم؛ ارسال id تصاویر سایت ۱ باعث خطای
             // woocommerce_product_invalid_image_id در سایت ۲ می‌شود چون آن id ها در سایت مقصد وجود ندارند.
             'images' => $this->prepare_images($product1['images'] ?? []),
             // دسته‌ها و برچسب‌ها را با name می‌فرستیم نه id سایت ۱ که در سایت ۲ نامعتبر است.
             'categories' => $this->prepare_terms($product1['categories'] ?? []),
             'tags' => $this->prepare_terms($product1['tags'] ?? []),
-            'attributes' => $product1['attributes'] ?? [],
-            'stock_quantity' => $product1['stock_quantity'] ?? 0,
-            'manage_stock' => $product1['manage_stock'] ?? false,
+            // ویژگی‌ها را پاک‌سازی کن: حذف id سایت مبدأ + حفظ options و فلگ variation
+            'attributes' => $this->prepare_attributes($product1['attributes'] ?? []),
             'status' => 'draft' // منتشر نشود تا مدیر بررسی کند
         ];
+        
+        // موجودی فقط برای محصول ساده روی خود محصول تنظیم می‌شود؛
+        // در محصول متغیّر موجودی روی هر متغیّر (variation) تنظیم می‌گردد.
+        if ($type !== 'variable') {
+            $data['manage_stock'] = $product1['manage_stock'] ?? false;
+            if (! empty($data['manage_stock'])) {
+                $data['stock_quantity'] = isset($product1['stock_quantity']) ? intval($product1['stock_quantity']) : 0;
+            }
+            $data['stock_status'] = $product1['stock_status'] ?? 'instock';
+        }
+        
+        return $data;
+    }
+    
+    /**
+     * پاک‌سازی ویژگی‌های محصول والد:
+     * - حذف id ویژگی سایت مبدأ (id=0 یعنی ویژگی سفارشی محصول، در مقصد معتبر است)
+     * - حفظ options و فلگ‌های variation/visible
+     */
+    private function prepare_attributes($attributes) {
+        if (empty($attributes) || ! is_array($attributes)) {
+            return [];
+        }
+        
+        $clean = [];
+        foreach ($attributes as $attr) {
+            if (empty($attr['name'])) {
+                continue;
+            }
+            $clean[] = [
+                'name'      => $attr['name'],
+                'position'  => isset($attr['position']) ? intval($attr['position']) : 0,
+                'visible'   => isset($attr['visible']) ? (bool) $attr['visible'] : true,
+                'variation' => isset($attr['variation']) ? (bool) $attr['variation'] : false,
+                'options'   => $attr['options'] ?? [],
+            ];
+        }
+        
+        return $clean;
     }
     
     /**

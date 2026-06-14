@@ -69,6 +69,29 @@ class Inventory_Sync_API {
     }
     
     /**
+     * دریافت متغیّرهای یک محصول متغیّر (variations)
+     */
+    public function get_product_variations($product_id, $per_page = 100, $page = 1) {
+        $endpoint = '/wp-json/wc/v3/products/' . intval($product_id) . '/variations';
+        $params = [
+            'per_page' => $per_page,
+            'page' => $page,
+        ];
+        return $this->request('GET', $endpoint, [], $params);
+    }
+    
+    /**
+     * ایجاد گروهی متغیّرها برای یک محصول (batch)
+     * 
+     * @param int   $product_id شناسه محصول والد در سایت مقصد
+     * @param array $variations آرایه‌ای از داده‌های متغیّر برای ساخت
+     */
+    public function batch_create_variations($product_id, $variations) {
+        $endpoint = '/wp-json/wc/v3/products/' . intval($product_id) . '/variations/batch';
+        return $this->request('POST', $endpoint, ['create' => $variations]);
+    }
+    
+    /**
      * ارسال درخواست HTTP
      */
     private function request($method, $endpoint, $data = [], $params = []) {
