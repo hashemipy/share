@@ -21,7 +21,6 @@ class Inventory_Sync_Admin {
         add_action('wp_ajax_inventory_sync_sync_inventory', [$this, 'ajax_sync_inventory']);
         add_action('wp_ajax_inventory_sync_transfer_products', [$this, 'ajax_transfer_products']);
         add_action('wp_ajax_inventory_sync_get_logs', [$this, 'ajax_get_logs']);
-        add_action('wp_ajax_inventory_sync_get_transferred_ids', [$this, 'ajax_get_transferred_ids']);
     }
     
     public function add_menu() {
@@ -265,25 +264,5 @@ class Inventory_Sync_Admin {
         $logs = Inventory_Sync_Database::get_logs($limit, $offset);
         
         wp_send_json_success($logs);
-    }
-
-    /**
-     * برگرداندن لیست شناسه‌های محصولات سایت ۱ که قبلاً با موفقیت منتقل شده‌اند
-     * (یعنی در جدول mapping ثبت شده‌اند)
-     */
-    public function ajax_get_transferred_ids() {
-        check_ajax_referer('inventory_sync_nonce');
-
-        if (!current_user_can('manage_woocommerce')) {
-            wp_send_json_error('عدم دسترسی');
-        }
-
-        global $wpdb;
-
-        $ids = $wpdb->get_col(
-            "SELECT site1_product_id FROM {$wpdb->prefix}inventory_sync_mapping WHERE sync_status IN ('synced','pending')"
-        );
-
-        wp_send_json_success(array_map('intval', $ids));
     }
 }
