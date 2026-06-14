@@ -230,12 +230,13 @@ if (!defined('ABSPATH')) exit;
                                 <th><?php esc_html_e('نام محصول', 'inventory-sync'); ?></th>
                                 <th><?php esc_html_e('SKU', 'inventory-sync'); ?></th>
                                 <th><?php esc_html_e('موجودی', 'inventory-sync'); ?></th>
-                                <th><?php esc_html_e('وضعیت', 'inventory-sync'); ?></th>
+                                <th><?php esc_html_e('نوع', 'inventory-sync'); ?></th>
+                                <th><?php esc_html_e('وضعیت انتقال', 'inventory-sync'); ?></th>
                             </tr>
                         </thead>
                         <tbody class="transfer-products">
                             <tr>
-                                <td colspan="5" class="text-center">
+                                <td colspan="6" class="text-center">
                                     <?php esc_html_e('درحال بارگذاری محصولات...', 'inventory-sync'); ?>
                                 </td>
                             </tr>

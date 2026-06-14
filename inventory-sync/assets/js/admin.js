@@ -219,52 +219,81 @@
         },
         
         // === Transfer Management ===
+
+        // شناسه‌های محصولاتی که قبلاً منتقل شده‌اند
+        _transferredIds: [],
+
         loadTransferProducts: function() {
+            // ابتدا شناسه‌های منتقل‌شده را بگیر، سپس محصولات را رندر کن
             $.ajax({
                 url: inventorySyncData.ajaxurl,
                 type: 'POST',
                 data: {
-                    action: 'inventory_sync_get_products',
+                    action: 'inventory_sync_get_transferred_ids',
                     _ajax_nonce: inventorySyncData.nonce,
-                    site: 'site1',
-                    page: 1
                 },
                 success: (response) => {
                     if (response.success) {
-                        this.renderTransferTable(response.data);
+                        this._transferredIds = response.data || [];
                     }
                 },
-                error: () => {
-                    $('.transfer-products').html(
-                        '<tr><td colspan="5" class="text-center alert alert-error">' + 
-                        inventorySyncData.i18n.error + '</td></tr>'
-                    );
+                complete: () => {
+                    // بعد از دریافت وضعیت، محصولات را بارگذاری کن
+                    $.ajax({
+                        url: inventorySyncData.ajaxurl,
+                        type: 'POST',
+                        data: {
+                            action: 'inventory_sync_get_products',
+                            _ajax_nonce: inventorySyncData.nonce,
+                            site: 'site1',
+                            page: 1
+                        },
+                        success: (resp) => {
+                            if (resp.success) {
+                                this.renderTransferTable(resp.data);
+                            }
+                        },
+                        error: () => {
+                            $('.transfer-products').html(
+                                '<tr><td colspan="6" class="text-center alert alert-error">' +
+                                inventorySyncData.i18n.error + '</td></tr>'
+                            );
+                        }
+                    });
                 }
             });
         },
-        
+
         renderTransferTable: function(products) {
             if (!products || products.length === 0) {
                 $('.transfer-products').html(
-                    '<tr><td colspan="5" class="text-center">' + 
+                    '<tr><td colspan="6" class="text-center">' +
                     inventorySyncData.i18n.selectProducts + '</td></tr>'
                 );
                 return;
             }
-            
+
             let html = '';
             products.forEach(product => {
+                const transferred = this._transferredIds.includes(parseInt(product.id));
+                const rowClass    = transferred ? ' class="transfer-done"' : '';
+                const statusBadge = transferred
+                    ? '<span class="status-badge transferred">&#10003; منتقل شده</span>'
+                    : '<span class="status-badge pending">&#8212; منتقل نشده</span>';
+                const typeLabel = product.type === 'variable' ? 'متغیّر' : 'ساده';
+
                 html += `
-                    <tr>
-                        <td><input type="checkbox" class="select-product" value="${product.id}"></td>
+                    <tr${rowClass} data-product-id="${product.id}">
+                        <td><input type="checkbox" class="select-product" value="${product.id}"${transferred ? ' disabled title="قبلاً منتقل شده"' : ''}></td>
                         <td>${product.name}</td>
                         <td>${product.sku || 'N/A'}</td>
                         <td>${product.stock_quantity || 0}</td>
-                        <td><span class="status-badge pending">📋 منتظر</span></td>
+                        <td>${typeLabel}</td>
+                        <td>${statusBadge}</td>
                     </tr>
                 `;
             });
-            
+
             $('.transfer-products').html(html);
         },
         
@@ -314,8 +343,12 @@
         
         performTransfer: function(productIds) {
             const $progress = $('.progress-container');
+            const $progressFill = $progress.find('.progress-fill');
+            const $progressText = $progress.find('.progress-text');
             $progress.show();
-            
+            $progressFill.css('width', '0%');
+            $progressText.text('در حال انتقال...');
+
             $.ajax({
                 url: inventorySyncData.ajaxurl,
                 type: 'POST',
@@ -326,21 +359,46 @@
                 },
                 success: (response) => {
                     if (response.success) {
-                        const results = response.data;
-                        const successful = results.filter(r => r.success).length;
-                        const failed = results.filter(r => !r.success).length;
-                        
-                        const message = `✓ انتقال کامل شد!\nموفق: ${successful}\nناموفق: ${failed}`;
-                        alert(message);
-                        
-                        this.loadTransferProducts();
+                        const results  = response.data;
+                        const successful = results.filter(r => r.success);
+                        const failed     = results.filter(r => !r.success);
+
+                        $progressFill.css('width', '100%');
+                        $progressText.text(
+                            'موفق: ' + successful.length + ' | ناموفق: ' + failed.length
+                        );
+
+                        // علامت‌گذاری ردیف‌های موفق بدون reload کامل
+                        successful.forEach(r => {
+                            const pid = parseInt(r.product_id);
+                            if (!this._transferredIds.includes(pid)) {
+                                this._transferredIds.push(pid);
+                            }
+                            const $row = $('tr[data-product-id="' + pid + '"]');
+                            $row.addClass('transfer-done');
+                            $row.find('.status-badge')
+                                .removeClass('pending')
+                                .addClass('transferred')
+                                .html('&#10003; منتقل شده');
+                            $row.find('input[type="checkbox"]')
+                                .prop('checked', false)
+                                .prop('disabled', true)
+                                .attr('title', 'قبلاً منتقل شده');
+                        });
+
+                        // پیام خطا برای ناموفق‌ها
+                        if (failed.length > 0) {
+                            const failMsgs = failed.map(r => 'محصول ' + r.product_id + ': ' + r.message).join('\n');
+                            alert('ناموفق:\n' + failMsgs);
+                        }
                     }
                 },
                 error: () => {
-                    alert('✗ ' + inventorySyncData.i18n.error);
+                    alert('&#10007; ' + inventorySyncData.i18n.error);
+                    $progress.hide();
                 },
                 complete: () => {
-                    $progress.hide();
+                    setTimeout(() => $progress.hide(), 2000);
                 }
             });
         },
