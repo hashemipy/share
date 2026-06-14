@@ -303,14 +303,63 @@ class Inventory_Sync_Manager {
             'description' => $product1['description'] ?? '',
             'short_description' => $product1['short_description'] ?? '',
             'sku' => $product1['sku'] ?? '',
-            'images' => $product1['images'] ?? [],
-            'categories' => $product1['categories'] ?? [],
-            'tags' => $product1['tags'] ?? [],
+            // فقط آدرس (src) تصاویر را می‌فرستیم؛ ارسال id تصاویر سایت ۱ باعث خطای
+            // woocommerce_product_invalid_image_id در سایت ۲ می‌شود چون آن id ها در سایت مقصد وجود ندارند.
+            'images' => $this->prepare_images($product1['images'] ?? []),
+            // دسته‌ها و برچسب‌ها را با name می‌فرستیم نه id سایت ۱ که در سایت ۲ نامعتبر است.
+            'categories' => $this->prepare_terms($product1['categories'] ?? []),
+            'tags' => $this->prepare_terms($product1['tags'] ?? []),
             'attributes' => $product1['attributes'] ?? [],
             'stock_quantity' => $product1['stock_quantity'] ?? 0,
             'manage_stock' => $product1['manage_stock'] ?? false,
             'status' => 'draft' // منتشر نشود تا مدیر بررسی کند
         ];
+    }
+    
+    /**
+     * پاک‌سازی تصاویر: حذف id سایت مبدأ و نگه‌داشتن فقط src/name/alt
+     * تا سایت مقصد خودش تصویر را از روی آدرس دانلود و آپلود کند.
+     */
+    private function prepare_images($images) {
+        if (empty($images) || ! is_array($images)) {
+            return [];
+        }
+        
+        $clean = [];
+        foreach ($images as $image) {
+            if (empty($image['src'])) {
+                continue;
+            }
+            $new_image = ['src' => $image['src']];
+            if (! empty($image['name'])) {
+                $new_image['name'] = $image['name'];
+            }
+            if (! empty($image['alt'])) {
+                $new_image['alt'] = $image['alt'];
+            }
+            $clean[] = $new_image;
+        }
+        
+        return $clean;
+    }
+    
+    /**
+     * پاک‌سازی دسته‌ها/برچسب‌ها: حذف id سایت مبدأ و نگه‌داشتن فقط name
+     * تا سایت مقصد بر اساس نام، term موجود را پیدا یا ایجاد کند.
+     */
+    private function prepare_terms($terms) {
+        if (empty($terms) || ! is_array($terms)) {
+            return [];
+        }
+        
+        $clean = [];
+        foreach ($terms as $term) {
+            if (! empty($term['name'])) {
+                $clean[] = ['name' => $term['name']];
+            }
+        }
+        
+        return $clean;
     }
     
     /**
