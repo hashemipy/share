@@ -12,10 +12,13 @@ class Inventory_Sync_Database {
         $table4 = $wpdb->prefix . 'inventory_sync_attribute_mapping';
         $table5 = $wpdb->prefix . 'inventory_sync_products_transferred';
         
+        // جدول mapping - ستون‌های site1_product_name و site2_product_name اضافه شد
         $sql1 = "CREATE TABLE IF NOT EXISTS $table1 (
             id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
             site1_product_id BIGINT(20) UNSIGNED NOT NULL,
             site2_product_id BIGINT(20) UNSIGNED NOT NULL,
+            site1_product_name VARCHAR(255),
+            site2_product_name VARCHAR(255),
             site1_sku VARCHAR(255),
             site2_sku VARCHAR(255),
             sync_enabled BOOLEAN DEFAULT 1,
@@ -38,7 +41,7 @@ class Inventory_Sync_Database {
             target_site VARCHAR(100),
             old_value LONGTEXT,
             new_value LONGTEXT,
-            status ENUM('success', 'failed', 'pending') DEFAULT 'pending',
+            status ENUM('success', 'failed', 'pending', 'info') DEFAULT 'pending',
             error_message LONGTEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             INDEX idx_created (created_at),
@@ -57,7 +60,7 @@ class Inventory_Sync_Database {
             sync_status ENUM('success', 'failed', 'pending') DEFAULT 'success',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            UNIQUE KEY unique_category_mapping (site1_category_id, site2_category_id),
+            UNIQUE KEY unique_category_mapping (site1_category_id),
             INDEX idx_created (created_at)
         ) $charset_collate;";
         
@@ -71,7 +74,7 @@ class Inventory_Sync_Database {
             sync_status ENUM('success', 'failed', 'pending') DEFAULT 'success',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            UNIQUE KEY unique_attribute_mapping (site1_attribute_id, site2_attribute_id),
+            UNIQUE KEY unique_attribute_mapping (site1_attribute_id),
             INDEX idx_created (created_at)
         ) $charset_collate;";
         
@@ -136,6 +139,56 @@ class Inventory_Sync_Database {
         );
     }
     
+    /**
+     * دریافت همه مرتبط‌سازی‌ها (برای نمایش در UI)
+     */
+    public static function get_all_mappings() {
+        global $wpdb;
+        return $wpdb->get_results(
+            "SELECT * FROM {$wpdb->prefix}inventory_sync_mapping ORDER BY created_at DESC"
+        );
+    }
+    
+    /**
+     * دریافت یک mapping بر اساس ID
+     */
+    public static function get_mapping_by_id($id) {
+        global $wpdb;
+        return $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}inventory_sync_mapping WHERE id = %d",
+                $id
+            )
+        );
+    }
+    
+    /**
+     * حذف یک مرتبط‌سازی
+     */
+    public static function delete_mapping($id) {
+        global $wpdb;
+        return $wpdb->delete(
+            $wpdb->prefix . 'inventory_sync_mapping',
+            ['id' => intval($id)],
+            ['%d']
+        );
+    }
+    
+    /**
+     * بررسی اینکه آیا یک محصول از سایت ۱ یا ۲ قبلاً مرتبط شده
+     */
+    public static function is_product_mapped($product_id) {
+        global $wpdb;
+        return $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}inventory_sync_mapping 
+                 WHERE site1_product_id = %d OR site2_product_id = %d",
+                $product_id,
+                $product_id
+            )
+        );
+    }
+    
     public static function get_logs($limit = 50, $offset = 0) {
         global $wpdb;
         
@@ -148,22 +201,28 @@ class Inventory_Sync_Database {
         );
     }
     
-    // دسته‌بندی
+    // دسته‌بندی - با INSERT IGNORE برای جلوگیری از خطای duplicate key
     public static function add_category_mapping($site1_id, $site2_id, $site1_name, $site2_name, $site1_parent = 0, $site2_parent = 0) {
         global $wpdb;
         
-        return $wpdb->insert(
-            $wpdb->prefix . 'inventory_sync_category_mapping',
-            [
-                'site1_category_id' => $site1_id,
-                'site2_category_id' => $site2_id,
-                'site1_category_name' => $site1_name,
-                'site2_category_name' => $site2_name,
-                'site1_parent_id' => $site1_parent,
-                'site2_parent_id' => $site2_parent,
-                'sync_status' => 'success'
-            ],
-            ['%d', '%d', '%s', '%s', '%d', '%d', '%s']
+        // INSERT IGNORE: اگر قبلاً وجود داشت، آپدیت می‌کند
+        return $wpdb->query(
+            $wpdb->prepare(
+                "INSERT INTO {$wpdb->prefix}inventory_sync_category_mapping
+                 (site1_category_id, site2_category_id, site1_category_name, site2_category_name, site1_parent_id, site2_parent_id, sync_status)
+                 VALUES (%d, %d, %s, %s, %d, %d, 'success')
+                 ON DUPLICATE KEY UPDATE
+                    site2_category_id = VALUES(site2_category_id),
+                    site2_category_name = VALUES(site2_category_name),
+                    site2_parent_id = VALUES(site2_parent_id),
+                    updated_at = NOW()",
+                $site1_id,
+                $site2_id,
+                $site1_name,
+                $site2_name,
+                $site1_parent,
+                $site2_parent
+            )
         );
     }
     
@@ -178,21 +237,25 @@ class Inventory_Sync_Database {
         );
     }
     
-    // ویژگی‌ها (Attributes)
+    // ویژگی‌ها - با INSERT ... ON DUPLICATE KEY UPDATE برای جلوگیری از خطا
     public static function add_attribute_mapping($site1_id, $site2_id, $site1_name, $site2_name, $type = 'pa') {
         global $wpdb;
         
-        return $wpdb->insert(
-            $wpdb->prefix . 'inventory_sync_attribute_mapping',
-            [
-                'site1_attribute_id' => $site1_id,
-                'site2_attribute_id' => $site2_id,
-                'site1_attribute_name' => $site1_name,
-                'site2_attribute_name' => $site2_name,
-                'attribute_type' => $type,
-                'sync_status' => 'success'
-            ],
-            ['%d', '%d', '%s', '%s', '%s', '%s']
+        return $wpdb->query(
+            $wpdb->prepare(
+                "INSERT INTO {$wpdb->prefix}inventory_sync_attribute_mapping
+                 (site1_attribute_id, site2_attribute_id, site1_attribute_name, site2_attribute_name, attribute_type, sync_status)
+                 VALUES (%d, %d, %s, %s, %s, 'success')
+                 ON DUPLICATE KEY UPDATE
+                    site2_attribute_id = VALUES(site2_attribute_id),
+                    site2_attribute_name = VALUES(site2_attribute_name),
+                    updated_at = NOW()",
+                $site1_id,
+                $site2_id,
+                $site1_name,
+                $site2_name,
+                $type
+            )
         );
     }
     
@@ -211,19 +274,23 @@ class Inventory_Sync_Database {
     public static function add_transferred_product($site1_id, $site2_id, $product_name, $status = 'success', $error = '') {
         global $wpdb;
         
-        return $wpdb->insert(
-            $wpdb->prefix . 'inventory_sync_products_transferred',
-            [
-                'site1_product_id' => $site1_id,
-                'site2_product_id' => $site2_id,
-                'product_name' => $product_name,
-                'transferred_at' => current_time('mysql'),
-                'transfer_status' => $status,
-                'categories_synced' => 1,
-                'attributes_synced' => 1,
-                'error_message' => $error
-            ],
-            ['%d', '%d', '%s', '%s', '%s', '%d', '%d', '%s']
+        // ON DUPLICATE KEY UPDATE برای انتقال مجدد
+        return $wpdb->query(
+            $wpdb->prepare(
+                "INSERT INTO {$wpdb->prefix}inventory_sync_products_transferred
+                 (site1_product_id, site2_product_id, product_name, transferred_at, transfer_status, categories_synced, attributes_synced, error_message)
+                 VALUES (%d, %d, %s, NOW(), %s, 1, 1, %s)
+                 ON DUPLICATE KEY UPDATE
+                    product_name = VALUES(product_name),
+                    transferred_at = NOW(),
+                    transfer_status = VALUES(transfer_status),
+                    error_message = VALUES(error_message)",
+                $site1_id,
+                $site2_id,
+                $product_name,
+                $status,
+                $error
+            )
         );
     }
     

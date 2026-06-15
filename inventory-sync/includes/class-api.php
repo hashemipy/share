@@ -92,6 +92,17 @@ class Inventory_Sync_API {
     }
     
     /**
+     * ایجاد و آپدیت گروهی متغیّرها (batch upsert)
+     * 
+     * @param int   $product_id شناسه محصول والد در سایت مقصد
+     * @param array $batch_data آرایه‌ای شامل کلیدهای 'create' و/یا 'update'
+     */
+    public function batch_upsert_variations($product_id, $batch_data) {
+        $endpoint = '/wp-json/wc/v3/products/' . intval($product_id) . '/variations/batch';
+        return $this->request('POST', $endpoint, $batch_data);
+    }
+    
+    /**
      * دریافت دسته‌بندی‌ها
      */
     public function get_categories($per_page = 100, $page = 1) {
