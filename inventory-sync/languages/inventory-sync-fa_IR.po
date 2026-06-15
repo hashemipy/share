@@ -1,0 +1,235 @@
+# Translation file for Inventory Sync Pro
+# Copyright (C) 2024
+# This file is distributed under the same license as the Inventory Sync Pro plugin.
+
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: fa_IR\n"
+"MIME-Version: 1.0\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: includes/class-admin.php
+msgid "Inventory Sync"
+msgstr "Inventory Sync - هماهنگ‌سازی موجودی"
+
+msgid "Inventory Sync - هماهنگ‌سازی موجودی"
+msgstr "Inventory Sync - هماهنگ‌سازی موجودی"
+
+#: admin/dashboard.php
+msgid "⚙️ تنظیمات"
+msgstr "⚙️ تنظیمات"
+
+msgid "🔗 مرتبط‌سازی محصولات"
+msgstr "🔗 مرتبط‌سازی محصولات"
+
+msgid "📤 انتقال محصولات"
+msgstr "📤 انتقال محصولات"
+
+msgid "📋 لاگ‌ها"
+msgstr "📋 لاگ‌ها"
+
+msgid "تنظیمات سایت‌ها"
+msgstr "تنظیمات سایت‌ها"
+
+msgid "سایت شماره 1"
+msgstr "سایت شماره 1"
+
+msgid "سایت شماره 2"
+msgstr "سایت شماره 2"
+
+msgid "نام سایت"
+msgstr "نام سایت"
+
+msgid "نام شناسایی سایت را وارد کنید"
+msgstr "نام شناسایی سایت را وارد کنید"
+
+msgid "آدرس سایت"
+msgstr "آدرس سایت"
+
+msgid "آدرس کامل سایت WooCommerce (مثل: https://example.com)"
+msgstr "آدرس کامل سایت WooCommerce (مثل: https://example.com)"
+
+msgid "API Key"
+msgstr "API Key"
+
+msgid "از پنل مدیریت WooCommerce > تنظیمات > Advanced > REST API کاپی کنید"
+msgstr "از پنل مدیریت WooCommerce > تنظیمات > Advanced > REST API کاپی کنید"
+
+msgid "API Secret"
+msgstr "API Secret"
+
+msgid "🔗 تست اتصال"
+msgstr "🔗 تست اتصال"
+
+msgid "تنظیمات پیشرفته"
+msgstr "تنظیمات پیشرفته"
+
+msgid "جهت هماهنگ‌سازی"
+msgstr "جهت هماهنگ‌سازی"
+
+msgid "انتخاب کنید کدام سایت مرجع است"
+msgstr "انتخاب کنید کدام سایت مرجع است"
+
+msgid "سایت 1 ← سایت 2"
+msgstr "سایت 1 ← سایت 2"
+
+msgid "سایت 2 ← سایت 1"
+msgstr "سایت 2 ← سایت 1"
+
+msgid "دوطرفه"
+msgstr "دوطرفه"
+
+msgid "فعال‌سازی هماهنگ‌سازی خودکار"
+msgstr "فعال‌سازی هماهنگ‌سازی خودکار"
+
+msgid "اگر فعال باشد، موجودی هر 5 دقیقه به‌روز می‌شود"
+msgstr "اگر فعال باشد، موجودی هر 5 دقیقه به‌روز می‌شود"
+
+msgid "💾 ذخیره تنظیمات"
+msgstr "💾 ذخیره تنظیمات"
+
+msgid "مرتبط‌سازی محصولات"
+msgstr "مرتبط‌سازی محصولات"
+
+msgid "محصولات سایت 1 و 2 را در کنار هم ببینید و آنها را مرتبط کنید"
+msgstr "محصولات سایت 1 و 2 را در کنار هم ببینید و آنها را مرتبط کنید"
+
+msgid "سایت 1 - محصولات"
+msgstr "سایت 1 - محصولات"
+
+msgid "سایت 2 - محصولات"
+msgstr "سایت 2 - محصولات"
+
+msgid "درحال بارگذاری..."
+msgstr "درحال بارگذاری..."
+
+msgid "⚡ هماهنگ‌سازی همه موجودی‌ها"
+msgstr "⚡ هماهنگ‌سازی همه موجودی‌ها"
+
+msgid "انتقال محصولات"
+msgstr "انتقال محصولات"
+
+msgid "محصولات را از سایت 1 به سایت 2 منتقل کنید"
+msgstr "محصولات را از سایت 1 به سایت 2 منتقل کنید"
+
+msgid "انتخاب همه"
+msgstr "انتخاب همه"
+
+msgid "نام محصول"
+msgstr "نام محصول"
+
+msgid "SKU"
+msgstr "SKU"
+
+msgid "موجودی"
+msgstr "موجودی"
+
+msgid "وضعیت"
+msgstr "وضعیت"
+
+msgid "درحال بارگذاری محصولات..."
+msgstr "درحال بارگذاری محصولات..."
+
+msgid "📤 انتقال محصولات انتخاب شده"
+msgstr "📤 انتقال محصولات انتخاب شده"
+
+msgid "📤 انتقال همه محصولات"
+msgstr "📤 انتقال همه محصولات"
+
+msgid "لاگ‌های هماهنگ‌سازی"
+msgstr "لاگ‌های هماهنگ‌سازی"
+
+msgid "تاریخ"
+msgstr "تاریخ"
+
+msgid "عملیات"
+msgstr "عملیات"
+
+msgid "از سایت"
+msgstr "از سایت"
+
+msgid "به سایت"
+msgstr "به سایت"
+
+msgid "پیام"
+msgstr "پیام"
+
+msgid "درحال بارگذاری لاگ‌ها..."
+msgstr "درحال بارگذاری لاگ‌ها..."
+
+# JavaScript translations
+msgid "ذخیره می‌شود..."
+msgstr "ذخیره می‌شود..."
+
+msgid "ذخیره شد!"
+msgstr "ذخیره شد!"
+
+msgid "خطا رخ داد!"
+msgstr "خطا رخ داد!"
+
+msgid "بارگذاری..."
+msgstr "بارگذاری..."
+
+msgid "هماهنگ‌سازی..."
+msgstr "هماهنگ‌سازی..."
+
+msgid "موفق!"
+msgstr "موفق!"
+
+msgid "محصولات را انتخاب کنید"
+msgstr "محصولات را انتخاب کنید"
+
+msgid "تست اتصال"
+msgstr "تست اتصال"
+
+msgid "ابتدا تنظیمات را تنظیم کنید"
+msgstr "ابتدا تنظیمات را تنظیم کنید"
+
+msgid "دسترسی رد شد"
+msgstr "دسترسی رد شد"
+
+msgid "عدم دسترسی"
+msgstr "عدم دسترسی"
+
+msgid "اتصال برقرار است!"
+msgstr "اتصال برقرار است!"
+
+msgid "اتصال ناموفق بود"
+msgstr "اتصال ناموفق بود"
+
+msgid "تنظیمات ذخیره شد"
+msgstr "تنظیمات ذخیره شد"
+
+msgid "خطا در ذخیره"
+msgstr "خطا در ذخیره"
+
+msgid "نقشه‌برداری ذخیره شد"
+msgstr "نقشه‌برداری ذخیره شد"
+
+msgid "موجودی هماهنگ شد"
+msgstr "موجودی هماهنگ شد"
+
+msgid "Inventory Sync نیاز به WooCommerce دارد!"
+msgstr "Inventory Sync نیاز به WooCommerce دارد!"
+
+msgid "درخواست بیش از حد زمان طول کشید"
+msgstr "درخواست بیش از حد زمان طول کشید"
+
+msgid "نقشه‌برداری پیدا نشد"
+msgstr "نقشه‌برداری پیدا نشد"
+
+msgid "شناسه‌های محصول مورد نیاز است"
+msgstr "شناسه‌های محصول مورد نیاز است"
+
+msgid "شناسه نقشه‌برداری مورد نیاز است"
+msgstr "شناسه نقشه‌برداری مورد نیاز است"
+
+msgid "محصولی انتخاب نشده است"
+msgstr "محصولی انتخاب نشده است"
+
+msgid "هیچ لاگی موجود نیست"
+msgstr "هیچ لاگی موجود نیست"
+
+msgid "Inventory Sync Pro"
+msgstr "Inventory Sync Pro"
