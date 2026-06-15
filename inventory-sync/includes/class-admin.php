@@ -21,6 +21,7 @@ class Inventory_Sync_Admin {
         add_action('wp_ajax_inventory_sync_sync_inventory', [$this, 'ajax_sync_inventory']);
         add_action('wp_ajax_inventory_sync_transfer_products', [$this, 'ajax_transfer_products']);
         add_action('wp_ajax_inventory_sync_get_logs', [$this, 'ajax_get_logs']);
+        add_action('wp_ajax_inventory_sync_get_transferred_products', [$this, 'ajax_get_transferred_products']);
     }
     
     public function add_menu() {
@@ -264,5 +265,21 @@ class Inventory_Sync_Admin {
         $logs = Inventory_Sync_Database::get_logs($limit, $offset);
         
         wp_send_json_success($logs);
+    }
+    
+    public function ajax_get_transferred_products() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('عدم دسترسی');
+        }
+        
+        $page = intval($_POST['page'] ?? 1);
+        $limit = 50;
+        $offset = ($page - 1) * $limit;
+        
+        $products = Inventory_Sync_Database::get_transferred_products($limit, $offset);
+        
+        wp_send_json_success($products);
     }
 }

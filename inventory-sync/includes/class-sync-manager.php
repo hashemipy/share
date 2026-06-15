@@ -236,24 +236,61 @@ class Inventory_Sync_Manager {
     }
     
     /**
-     * انتقال محصول
+     * انتقال محصول شامل دسته‌بندی‌ها، ویژگی‌ها و متغیّرها
+     * 
+     * @param int $site1_product_id شناسه محصول در سایت 1
+     * @return array|WP_Error
      */
-    public function transfer_product($site1_product_id, $site2_product_id = null) {
-        // Get product from Site 1
+    public function transfer_product($site1_product_id) {
+        // دریافت محصول از سایت 1
         $product1 = $this->site1_api->get_product($site1_product_id);
         
         if (is_wp_error($product1)) {
             return $product1;
         }
         
-        // ساخت محصول والد (ساده یا متغیّر)
+        $product_name = $product1['name'] ?? 'محصول بدون نام';
+        
+        // ۱. انتقال دسته‌بندی‌ها و ویژگی‌ها
+        $category_attr_sync = new Inventory_Sync_Category_Attribute_Sync(
+            $this->site1_api,
+            $this->site2_api
+        );
+        
+        // انتقال دسته‌بندی‌ها
+        $category_map = $category_attr_sync->sync_product_categories(
+            $product1['categories'] ?? []
+        );
+        
+        // انتقال ویژگی‌ها
+        $attribute_map = $category_attr_sync->sync_product_attributes(
+            $product1['attributes'] ?? []
+        );
+        
+        // ۲. آماده‌سازی داده‌های محصول برای سایت 2
         $product_data = $this->prepare_transfer_data($product1);
+        
+        // اپدیت دسته‌بندی‌های محصول با mapping جدید
+        if (!empty($category_map)) {
+            $new_categories = [];
+            foreach (($product1['categories'] ?? []) as $cat) {
+                $cat_id = $cat['id'] ?? 0;
+                if (isset($category_map[$cat_id])) {
+                    $new_categories[] = ['id' => $category_map[$cat_id]];
+                }
+            }
+            if (!empty($new_categories)) {
+                $product_data['categories'] = $new_categories;
+            }
+        }
+        
+        // ۳. ایجاد محصول در سایت 2
         $result = $this->site2_api->create_product($product_data);
         
         if (is_wp_error($result)) {
             Inventory_Sync_Database::insert_log(
                 $site1_product_id,
-                $product1['name'] ?? '',
+                $product_name,
                 'transfer_product',
                 'سایت 1',
                 'سایت 2',
@@ -262,44 +299,63 @@ class Inventory_Sync_Manager {
                 'failed',
                 $result->get_error_message()
             );
+            
+            Inventory_Sync_Database::add_transferred_product(
+                $site1_product_id,
+                0,
+                $product_name,
+                'failed',
+                $result->get_error_message()
+            );
+            
             return $result;
         }
         
-        // اگر محصول متغیّر است، متغیّرها (variations) را هم منتقل کن
+        $site2_product_id = $result['id'];
+        
+        // ۴. اگر محصول متغیّر است، متغیّرها را منتقل کن
         if (($product1['type'] ?? 'simple') === 'variable') {
-            $variation_result = $this->transfer_variations($site1_product_id, $result['id'], $product1['name'] ?? '');
+            $variation_result = $this->transfer_variations($site1_product_id, $site2_product_id, $product_name);
             if (is_wp_error($variation_result)) {
                 Inventory_Sync_Database::insert_log(
                     $site1_product_id,
-                    $product1['name'] ?? '',
+                    $product_name,
                     'transfer_variations',
                     'سایت 1',
                     'سایت 2',
                     '',
-                    $result['id'],
+                    $site2_product_id,
                     'failed',
                     $variation_result->get_error_message()
                 );
             }
         }
         
-        // Save mapping
+        // ۵. ذخیره mapping
         $this->save_mapping(
             $site1_product_id,
-            $result['id'],
+            $site2_product_id,
             $product1['sku'] ?? '',
             $result['sku'] ?? ''
         );
         
-        // Log success
+        // ۶. ثبت محصول منتقل‌شده
+        Inventory_Sync_Database::add_transferred_product(
+            $site1_product_id,
+            $site2_product_id,
+            $product_name,
+            'success'
+        );
+        
+        // لاگ موفقیت
         Inventory_Sync_Database::insert_log(
             $site1_product_id,
-            $product1['name'] ?? '',
+            $product_name,
             'transfer_product',
             'سایت 1',
             'سایت 2',
             '',
-            $result['id'],
+            $site2_product_id,
             'success'
         );
         

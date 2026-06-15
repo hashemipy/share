@@ -24,6 +24,9 @@ if (!defined('ABSPATH')) exit;
         <a href="#transfer" class="nav-tab" data-tab="transfer">
             <?php esc_html_e('📤 انتقال محصولات', 'inventory-sync'); ?>
         </a>
+        <a href="#transferred" class="nav-tab" data-tab="transferred">
+            <?php esc_html_e('✅ محصولات منتقل‌شده', 'inventory-sync'); ?>
+        </a>
         <a href="#logs" class="nav-tab" data-tab="logs">
             <?php esc_html_e('📋 لاگ‌ها', 'inventory-sync'); ?>
         </a>
@@ -258,6 +261,44 @@ if (!defined('ABSPATH')) exit;
                     </div>
                     <p class="progress-text"></p>
                 </div>
+            </div>
+        </div>
+        
+        <!-- Transferred Products Tab -->
+        <div id="transferred" class="tab-pane">
+            <h2><?php esc_html_e('محصولات منتقل‌شده', 'inventory-sync'); ?></h2>
+            <p class="description">
+                <?php esc_html_e('محصولاتی که با موفقیت از سایت 1 به سایت 2 منتقل شده‌اند، با علامت ✅ مشخص می‌شوند', 'inventory-sync'); ?>
+            </p>
+            
+            <div class="transferred-container">
+                <div class="transferred-filters">
+                    <input type="text" id="transferred-search" class="form-control" 
+                           placeholder="<?php esc_html_e('جستجو نام محصول...', 'inventory-sync'); ?>" 
+                           style="max-width: 300px;">
+                </div>
+                
+                <table class="widefat striped">
+                    <thead>
+                        <tr>
+                            <th><?php esc_html_e('وضعیت', 'inventory-sync'); ?></th>
+                            <th><?php esc_html_e('نام محصول', 'inventory-sync'); ?></th>
+                            <th><?php esc_html_e('شناسه سایت 1', 'inventory-sync'); ?></th>
+                            <th><?php esc_html_e('شناسه سایت 2', 'inventory-sync'); ?></th>
+                            <th><?php esc_html_e('دسته‌بندی', 'inventory-sync'); ?></th>
+                            <th><?php esc_html_e('ویژگی‌ها', 'inventory-sync'); ?></th>
+                            <th><?php esc_html_e('تاریخ انتقال', 'inventory-sync'); ?></th>
+                            <th><?php esc_html_e('عملیات', 'inventory-sync'); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody class="transferred-list">
+                        <tr>
+                            <td colspan="8" class="text-center">
+                                <?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
         

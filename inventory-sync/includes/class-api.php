@@ -92,6 +92,85 @@ class Inventory_Sync_API {
     }
     
     /**
+     * دریافت دسته‌بندی‌ها
+     */
+    public function get_categories($per_page = 100, $page = 1) {
+        $endpoint = '/wp-json/wc/v3/products/categories';
+        $params = [
+            'per_page' => $per_page,
+            'page' => $page,
+            'hide_empty' => false,
+            'orderby' => 'id',
+            'order' => 'asc'
+        ];
+        
+        return $this->request('GET', $endpoint, [], $params);
+    }
+    
+    /**
+     * دریافت یک دسته‌بندی
+     */
+    public function get_category($category_id) {
+        $endpoint = '/wp-json/wc/v3/products/categories/' . intval($category_id);
+        return $this->request('GET', $endpoint, []);
+    }
+    
+    /**
+     * ایجاد دسته‌بندی
+     */
+    public function create_category($category_data) {
+        $endpoint = '/wp-json/wc/v3/products/categories';
+        return $this->request('POST', $endpoint, $category_data);
+    }
+    
+    /**
+     * دریافت ویژگی‌ها (Attributes)
+     */
+    public function get_attributes() {
+        $endpoint = '/wp-json/wc/v3/products/attributes';
+        return $this->request('GET', $endpoint, []);
+    }
+    
+    /**
+     * دریافت یک ویژگی
+     */
+    public function get_attribute($attribute_id) {
+        $endpoint = '/wp-json/wc/v3/products/attributes/' . intval($attribute_id);
+        return $this->request('GET', $endpoint, []);
+    }
+    
+    /**
+     * ایجاد ویژگی
+     */
+    public function create_attribute($attribute_data) {
+        $endpoint = '/wp-json/wc/v3/products/attributes';
+        return $this->request('POST', $endpoint, $attribute_data);
+    }
+    
+    /**
+     * دریافت تکیه‌های یک ویژگی (Attribute Terms)
+     */
+    public function get_attribute_terms($attribute_id, $per_page = 100, $page = 1) {
+        $endpoint = '/wp-json/wc/v3/products/attributes/' . intval($attribute_id) . '/terms';
+        $params = [
+            'per_page' => $per_page,
+            'page' => $page,
+            'orderby' => 'id',
+            'order' => 'asc'
+        ];
+        
+        return $this->request('GET', $endpoint, [], $params);
+    }
+    
+    /**
+     * ایجاد تکیه برای ویژگی (Attribute Term)
+     */
+    public function create_attribute_term($attribute_id, $term_data) {
+        $endpoint = '/wp-json/wc/v3/products/attributes/' . intval($attribute_id) . '/terms';
+        return $this->request('POST', $endpoint, $term_data);
+    }
+    
+    /**
      * ارسال درخواست HTTP
      */
     private function request($method, $endpoint, $data = [], $params = []) {

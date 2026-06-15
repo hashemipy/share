@@ -34,6 +34,7 @@
             this.loadProducts('site1');
             this.loadProducts('site2');
             this.loadTransferProducts();
+            this.loadTransferredProducts();
             this.loadLogs();
         },
         
@@ -343,6 +344,68 @@
                     $progress.hide();
                 }
             });
+        },
+        
+        // === Transferred Products Management ===
+        loadTransferredProducts: function() {
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_get_transferred_products',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    page: 1
+                },
+                success: (response) => {
+                    if (response.success) {
+                        this.renderTransferredProducts(response.data);
+                    }
+                },
+                error: () => {
+                    $('.transferred-list').html(
+                        '<tr><td colspan="8" class="text-center alert alert-error">' + 
+                        inventorySyncData.i18n.error + '</td></tr>'
+                    );
+                }
+            });
+        },
+        
+        renderTransferredProducts: function(products) {
+            if (!products || products.length === 0) {
+                $('.transferred-list').html(
+                    '<tr><td colspan="8" class="text-center">📭 هیچ محصولی منتقل نشده است</td></tr>'
+                );
+                return;
+            }
+            
+            let html = '';
+            products.forEach(product => {
+                const categoryStatus = product.categories_synced ? '✓' : '✗';
+                const attributeStatus = product.attributes_synced ? '✓' : '✗';
+                const transferDate = new Date(product.transferred_at).toLocaleString('fa-IR');
+                const statusBadge = product.transfer_status === 'success' ? 
+                    '<span class="status-badge success">✓ موفق</span>' : 
+                    '<span class="status-badge error">✗ ناموفق</span>';
+                
+                html += `
+                    <tr>
+                        <td>${statusBadge}</td>
+                        <td><strong>${product.product_name}</strong></td>
+                        <td>${product.site1_product_id}</td>
+                        <td>${product.site2_product_id}</td>
+                        <td>${categoryStatus}</td>
+                        <td>${attributeStatus}</td>
+                        <td>${transferDate}</td>
+                        <td>
+                            <a href="javascript:void(0)" class="view-product" data-product-id="${product.site2_product_id}">
+                                مشاهده
+                            </a>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            $('.transferred-list').html(html);
         },
         
         // === Logs Management ===
