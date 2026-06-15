@@ -273,14 +273,38 @@ class Inventory_Sync_Manager {
         
         if (is_wp_error($update_result)) {
             // قرار بده برای دوباره تلاش (Retry Logic)
-            $retry_count = intval($mapping->error_message ?? 0) + 1;
+            // ⭐ بهبود: حالا retry_count در جدول ذخیره می‌شود
+            $retry_count = intval($mapping->retry_count ?? 0) + 1;
             
-            if ($retry_count < 3) {
-                // دوباره تلاش کن
+            if ($retry_count < 4) {
+                // دوباره تلاش کن (تا 3 بار)
                 wp_schedule_single_event(
                     time() + (60 * $retry_count), // بعد از 1، 2، 3 دقیقه تلاش کن
                     'inventory_sync_mapping',
                     [$mapping->id]
+                );
+                
+                // به‌روزرسانی retry_count در database
+                global $wpdb;
+                $wpdb->update(
+                    $wpdb->prefix . 'inventory_sync_mapping',
+                    [
+                        'retry_count' => $retry_count,
+                        'sync_status' => 'error',
+                        'error_message' => $update_result->get_error_message()
+                    ],
+                    ['id' => $mapping->id]
+                );
+            } else {
+                // 3 بار تلاش شده است، دیگر تلاش نکن
+                global $wpdb;
+                $wpdb->update(
+                    $wpdb->prefix . 'inventory_sync_mapping',
+                    [
+                        'sync_status' => 'error',
+                        'error_message' => $update_result->get_error_message() . " (3 تلاش ناموفق)"
+                    ],
+                    ['id' => $mapping->id]
                 );
             }
             
@@ -308,6 +332,18 @@ class Inventory_Sync_Manager {
             '',
             $stock,
             'success'
+        );
+        
+        // ⭐ بسیار مهم: بروز کن status به synced
+        global $wpdb;
+        $wpdb->update(
+            $wpdb->prefix . 'inventory_sync_mapping',
+            [
+                'sync_status' => 'synced',
+                'retry_count' => 0,
+                'error_message' => ''
+            ],
+            ['site1_product_id' => $from_id, 'site2_product_id' => $to_id]
         );
     }
     
@@ -393,6 +429,9 @@ class Inventory_Sync_Manager {
     /**
      * انتقال محصول شامل دسته‌بندی‌ها، ویژگی‌ها و متغیّرها
      * 
+     * ⭐ بسیار مهم: این متد حالا Idempotent است
+     * یعنی اگر محصول قبلاً منتقل شده بود و پاک‌شد و دوباره منتقل شود، کار می‌کند
+     * 
      * @param int $site1_product_id شناسه محصول در سایت 1
      * @return array|WP_Error
      */
@@ -407,29 +446,84 @@ class Inventory_Sync_Manager {
         $product_name = $product1['name'] ?? 'محصول بدون نام';
         $original_sku = $product1['sku'] ?? '';
         
-        // ۱. بررسی اینکه محصول در سایت 2 قبلاً وجود ندارد
-        $existing_product = $this->site2_api->product_exists_by_sku($original_sku);
+        // ۱. بررسی اینکه mapping قبلی برای این محصول وجود دارد
+        global $wpdb;
+        $existing_mapping = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}inventory_sync_mapping 
+                 WHERE site1_product_id = %d",
+                $site1_product_id
+            )
+        );
+        
         $site2_product_id = null;
         
-        if ($existing_product && !empty($existing_product['id'])) {
-            // محصول موجود است - بروز کن
-            $site2_product_id = $existing_product['id'];
-            Inventory_Sync_Database::insert_log(
-                $site1_product_id,
-                $product_name,
-                'product_exists',
-                'سایت 1',
-                'سایت 2',
-                '',
-                $site2_product_id,
-                'info',
-                "محصول با SKU ({$original_sku}) در سایت 2 موجود است. بروز‌رسانی شد."
-            );
-        } else {
-            // محصول جدید - بررسی SKU منحصر‌به‌فردی
-            $sku_to_use = $original_sku;
+        if ($existing_mapping && $existing_mapping->site2_product_id > 0) {
+            // mapping قبلی وجود دارد، بررسی کن که آیا محصول در سایت 2 هنوز موجود است
+            $existing_product = $this->site2_api->get_product($existing_mapping->site2_product_id);
             
-            // اگر SKU خالی است، یک SKU منحصر‌به‌فردی تولید کن
+            if (!is_wp_error($existing_product)) {
+                // محصول هنوز موجود است
+                $site2_product_id = $existing_mapping->site2_product_id;
+                Inventory_Sync_Database::insert_log(
+                    $site1_product_id,
+                    $product_name,
+                    'product_exists_with_mapping',
+                    'سایت 1',
+                    'سایت 2',
+                    '',
+                    $site2_product_id,
+                    'info',
+                    "محصول با mapping قبلی در سایت 2 موجود است. بروز‌رسانی شد."
+                );
+            } else {
+                // محصول قبلاً حذف شده است، بریز mapping قبلی را و دوباره سعی کن
+                Inventory_Sync_Database::insert_log(
+                    $site1_product_id,
+                    $product_name,
+                    'previous_product_deleted',
+                    'سایت 1',
+                    'سایت 2',
+                    '',
+                    $existing_mapping->site2_product_id,
+                    'info',
+                    "محصول قبلی در سایت 2 حذف‌شده است. در حال ایجاد محصول جدید..."
+                );
+                
+                // پاک کن mapping قبلی
+                $wpdb->delete(
+                    $wpdb->prefix . 'inventory_sync_mapping',
+                    ['id' => $existing_mapping->id]
+                );
+                
+                $site2_product_id = null;
+            }
+        }
+        
+        // ۲. اگر mapping نیست، بررسی کن که محصول با همین SKU وجود دارد یا نه
+        if ($site2_product_id === null) {
+            $existing_product = $this->site2_api->product_exists_by_sku($original_sku);
+            
+            if ($existing_product && !empty($existing_product['id'])) {
+                // محصول با همین SKU موجود است
+                $site2_product_id = $existing_product['id'];
+                Inventory_Sync_Database::insert_log(
+                    $site1_product_id,
+                    $product_name,
+                    'product_exists_by_sku',
+                    'سایت 1',
+                    'سایت 2',
+                    '',
+                    $site2_product_id,
+                    'info',
+                    "محصول با SKU ({$original_sku}) در سایت 2 موجود است. بروز‌رسانی شد."
+                );
+            }
+        }
+        
+        // ۳. اگر محصول نیست، SKU منحصر‌به‌فردی تولید کن
+        $sku_to_use = $original_sku;
+        if ($site2_product_id === null) {
             if (empty($sku_to_use)) {
                 // ⭐ راه بهتر برای generate SKU:
                 // site1_product_id منحصر به فرد است و هرگز تکرار نمی‌شود
@@ -457,12 +551,16 @@ class Inventory_Sync_Manager {
                     );
                     return new WP_Error('sku_generation_failed', 'نتوانستیم SKU منحصر به فردی برای محصول تولید کنیم');
                 }
+            } else {
+                // اگر SKU اصلی وجود دارد ولی محصول نیست، حتی اگر محصولی با این SKU وجود داشت و پاک‌شد
+                // دوباره استفاده می‌کنیم
+                $sku_to_use = $original_sku;
             }
             
             $product1['sku'] = $sku_to_use;
         }
         
-        // ۲. انتقال دسته‌بندی‌ها و ویژگی‌ها
+        // ۴. انتقال دسته‌بندی‌ها و ویژگی‌ها
         // ⭐ بسیار مهم: این مرحله قبل از ایجاد محصول اتفاق می‌افتد
         // تا متغیرها بتوانند به ویژگی‌های sync‌شده اشاره کنند
         $category_attr_sync = new Inventory_Sync_Category_Attribute_Sync(
@@ -481,7 +579,7 @@ class Inventory_Sync_Manager {
             $product1['attributes'] ?? []
         );
         
-        // ۳. آماده��سازی داده‌های محصول برای سایت 2
+        // ۵. آماده‌سازی داده‌های محصول برای سایت 2
         $product_data = $this->prepare_transfer_data($product1);
         
         // اپدیت دسته‌بندی‌های محصول با mapping جدید
@@ -500,7 +598,7 @@ class Inventory_Sync_Manager {
             }
         }
         
-        // ۴. ایجاد یا بروز‌رسانی محصول در سایت 2
+        // ۶. ایجاد یا بروز‌رسانی محصول در سایت 2
         if ($site2_product_id !== null) {
             // محصول موجود - بروز کن
             Inventory_Sync_Database::insert_log(
@@ -535,9 +633,9 @@ class Inventory_Sync_Manager {
         if (is_wp_error($result)) {
             $error_msg = $result->get_error_message();
             
-            // ⭐ اگر خطا به خاطر SKU تکراری است
-            // و محصول موجود است، سعی کن آپدیت کن
-            if (stripos($error_msg, 'already present') !== false && $site2_product_id !== null) {
+            // ⭐ اگر خطا به خاطر SKU تکراری است و محصول موجود است
+            // این می‌تواند بدل اینکه خطا باشد، درواقع موفقیت‌آمیز است
+            if ((stripos($error_msg, 'already present') !== false || stripos($error_msg, 'duplicate') !== false) && $site2_product_id !== null) {
                 Inventory_Sync_Database::insert_log(
                     $site1_product_id,
                     $product_name,
@@ -550,7 +648,8 @@ class Inventory_Sync_Manager {
                     'محصول با این SKU قبلاً در سایت 2 موجود است'
                 );
                 
-                // محصول موجود است، کش را پاک کن و برگردان موفقیت
+                // محصول موجود است، ادامه بده
+                // این اتفاق نمی‌افتد اما اگر بیفتد، موفقیت‌آمیز محسوب کن
                 $this->clear_cache();
                 return ['id' => $site2_product_id];
             }
@@ -1172,16 +1271,44 @@ class Inventory_Sync_Manager {
     private function save_mapping($site1_id, $site2_id, $site1_sku, $site2_sku) {
         global $wpdb;
         
-        $wpdb->insert(
-            $wpdb->prefix . 'inventory_sync_mapping',
-            [
-                'site1_product_id' => $site1_id,
-                'site2_product_id' => $site2_id,
-                'site1_sku' => $site1_sku,
-                'site2_sku' => $site2_sku,
-                'sync_enabled' => 1,
-                'sync_status' => 'synced'
-            ]
+        // ⭐ بهبود: بررسی اینکه mapping قبلاً وجود دارد
+        $existing = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}inventory_sync_mapping 
+                 WHERE site1_product_id = %d AND site2_product_id = %d",
+                $site1_id,
+                $site2_id
+            )
         );
+        
+        if ($existing) {
+            // بروز کن mapping موجود (برای تضمین کردن که status صحیح است)
+            $wpdb->update(
+                $wpdb->prefix . 'inventory_sync_mapping',
+                [
+                    'site1_sku' => $site1_sku,
+                    'site2_sku' => $site2_sku,
+                    'sync_enabled' => 1,
+                    'sync_status' => 'synced',
+                    'retry_count' => 0,
+                    'error_message' => ''
+                ],
+                ['id' => $existing->id]
+            );
+        } else {
+            // ایجاد mapping جدید
+            $wpdb->insert(
+                $wpdb->prefix . 'inventory_sync_mapping',
+                [
+                    'site1_product_id' => $site1_id,
+                    'site2_product_id' => $site2_id,
+                    'site1_sku' => $site1_sku,
+                    'site2_sku' => $site2_sku,
+                    'sync_enabled' => 1,
+                    'sync_status' => 'synced',
+                    'retry_count' => 0
+                ]
+            );
+        }
     }
 }
