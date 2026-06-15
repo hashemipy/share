@@ -5,8 +5,17 @@
         // متغیرهای انتخاب‌شده برای مرتبط‌سازی دستی
         selectedSite1: null,
         selectedSite2: null,
+        nonce: '',
         
         init: function() {
+            // دریافت nonce از صفحه
+            this.nonce = inventorySyncData.nonce || inventorySyncNonce || '';
+            
+            if (!this.nonce) {
+                console.error('Nonce not found!');
+                return;
+            }
+            
             this.bindEvents();
             this.loadAutoMappedProducts();
             this.loadUnmappedProducts();
@@ -25,16 +34,21 @@
             const self = this;
             
             $.ajax({
-                url: ajaxurl,
+                url: inventorySyncData.ajaxurl,
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_get_auto_mapped_products',
-                    nonce: inventorySyncNonce
+                    nonce: this.nonce
                 },
                 success: function(response) {
                     if (response.success && response.data) {
                         self.displayAutoMappedProducts(response.data);
+                    } else {
+                        console.error('Failed to load auto mapped products', response);
                     }
+                },
+                error: function(xhr, status, error) {
+                    console.error('AJAX error:', error);
                 }
             });
         },
@@ -90,16 +104,21 @@
             const self = this;
             
             $.ajax({
-                url: ajaxurl,
+                url: inventorySyncData.ajaxurl,
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_get_unmapped_products',
-                    nonce: inventorySyncNonce
+                    nonce: this.nonce
                 },
                 success: function(response) {
                     if (response.success && response.data) {
                         self.displayUnmappedProducts(response.data);
+                    } else {
+                        console.error('Failed to load unmapped products', response);
                     }
+                },
+                error: function(xhr, status, error) {
+                    console.error('AJAX error:', error);
                 }
             });
         },
@@ -151,16 +170,19 @@
          */
         updateNextSyncTime: function() {
             $.ajax({
-                url: ajaxurl,
+                url: inventorySyncData.ajaxurl,
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_get_next_sync_time',
-                    nonce: inventorySyncNonce
+                    nonce: this.nonce
                 },
                 success: function(response) {
                     if (response.success) {
                         $('#next-sync-time').text('بعدی هماهنگ‌سازی: ' + response.data);
                     }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Failed to get next sync time:', error);
                 }
             });
         },
@@ -248,13 +270,13 @@
             const self = this;
             
             $.ajax({
-                url: ajaxurl,
+                url: inventorySyncData.ajaxurl,
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_create_manual_mapping',
                     site1_id: site1Id,
                     site2_id: site2Id,
-                    nonce: inventorySyncNonce
+                    nonce: this.nonce
                 },
                 success: function(response) {
                     if (response.success) {
@@ -266,6 +288,10 @@
                     } else {
                         alert('خطا: ' + response.data);
                     }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Failed to create mapping:', error);
+                    alert('خطا در ایجاد mapping');
                 }
             });
         },
@@ -274,18 +300,25 @@
          * هماهنگ‌سازی دستی موجودی
          */
         manualSyncInventory: function() {
+            const self = this;
             $.ajax({
-                url: ajaxurl,
+                url: inventorySyncData.ajaxurl,
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_manual_sync_all',
-                    nonce: inventorySyncNonce
+                    nonce: this.nonce
                 },
                 success: function(response) {
                     if (response.success) {
-                        alert('موجودی‌ها هماهنگ شدند! ' + response.data.synced + ' محصول');
-                        this.loadAutoMappedProducts();
+                        alert('موجودی‌ها هماهنگ شدند! ' + response.data.synced);
+                        self.loadAutoMappedProducts();
+                    } else {
+                        alert('خطا: ' + response.data);
                     }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Failed to sync:', error);
+                    alert('خطا در هماهنگ‌سازی');
                 }
             });
         },
@@ -294,20 +327,27 @@
          * هماهنگ‌سازی موجودی یک محصول
          */
         syncProductInventory: function(site1Id, site2Id) {
+            const self = this;
             $.ajax({
-                url: ajaxurl,
+                url: inventorySyncData.ajaxurl,
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_sync_product_inventory',
                     site1_id: site1Id,
                     site2_id: site2Id,
-                    nonce: inventorySyncNonce
+                    nonce: this.nonce
                 },
                 success: function(response) {
                     if (response.success) {
                         alert('هماهنگ‌سازی انجام شد!');
-                        this.loadAutoMappedProducts();
+                        self.loadAutoMappedProducts();
+                    } else {
+                        alert('خطا: ' + response.data);
                     }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Failed to sync product:', error);
+                    alert('خطا در هماهنگ‌سازی محصول');
                 }
             });
         },
@@ -316,20 +356,27 @@
          * حذف mapping
          */
         removeMapping: function(site1Id) {
+            const self = this;
             $.ajax({
-                url: ajaxurl,
+                url: inventorySyncData.ajaxurl,
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_remove_mapping',
                     site1_id: site1Id,
-                    nonce: inventorySyncNonce
+                    nonce: this.nonce
                 },
                 success: function(response) {
                     if (response.success) {
                         alert('Mapping حذف شد!');
-                        this.loadAutoMappedProducts();
-                        this.loadUnmappedProducts();
+                        self.loadAutoMappedProducts();
+                        self.loadUnmappedProducts();
+                    } else {
+                        alert('خطا: ' + response.data);
                     }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Failed to remove mapping:', error);
+                    alert('خطا در حذف mapping');
                 }
             });
         }

@@ -446,42 +446,27 @@ class Inventory_Sync_Manager {
                 'info',
                 'محصول قبلاً منتقل شده بود اما در سایت 2 پاک شده است. دوباره ایجاد می‌شود.'
             );
-        } else {
-            // محصول جدید - بررسی SKU منحصر‌به‌فردی
-            $sku_to_use = $original_sku;
-            
-            // اگر SKU خالی است، یک SKU منحصر‌به‌فردی تولید کن
-            if (empty($sku_to_use)) {
-                // ⭐ راه بهتر برای generate SKU:
-                // site1_product_id منحصر به فرد است و هرگز تکرار نمی‌شود
-                // مقدار random نیز برای اطمینان اضافه می‌شود
-                $sku_to_use = 'site1-' . $site1_product_id . '-' . bin2hex(random_bytes(4));
-                
-                // بررسی مجدد اینکه این SKU generate شده نیز در سایت 2 وجود ندارد
-                $attempt = 0;
-                while ($this->site2_api->product_exists_by_sku($sku_to_use) && $attempt < 5) {
-                    $sku_to_use = 'site1-' . $site1_product_id . '-' . bin2hex(random_bytes(4));
-                    $attempt++;
-                }
-                
-                if ($attempt >= 5) {
-                    Inventory_Sync_Database::insert_log(
-                        $site1_product_id,
-                        $product_name,
-                        'sku_generation_failed',
-                        'سایت 1',
-                        'سایت 2',
-                        'SKU اصلی خالی است و نتوانستیم SKU منحصر به فرد تولید کنیم',
-                        '',
-                        'failed',
-                        'بعد از 5 تلاش، SKU منحصر به فردی تولید نشد'
-                    );
-                    return new WP_Error('sku_generation_failed', 'نتوانستیم SKU منحصر به فردی برای محصول تولید کنیم');
-                }
-            }
-            
-            $product1['sku'] = $sku_to_use;
+            // تنظیم مجدد $site2_product_id برای ادامه‌ی فرآیند
+            $site2_product_id = null;
         }
+        
+        // فقط برای محصول جدیدی که ایجاد می‌شود
+        $sku_to_use = $original_sku;
+        
+        // اگر SKU خالی است، یک SKU منحصر‌به‌فردی تولید کن
+        if (empty($sku_to_use)) {
+            $sku_to_use = 'site1-' . $site1_product_id . '-' . time() . '-' . bin2hex(random_bytes(3));
+            
+            // بررسی مجدد اینکه این SKU generate شده نیز در سایت 2 وجود ندارد
+            $attempt = 0;
+            while ($this->site2_api->product_exists_by_sku($sku_to_use) && $attempt < 3) {
+                usleep(100000); // منتظر 0.1 ثانیه
+                $sku_to_use = 'site1-' . $site1_product_id . '-' . (time() + $attempt) . '-' . bin2hex(random_bytes(3));
+                $attempt++;
+            }
+        }
+        
+        $product1['sku'] = $sku_to_use;
         
         // ۲. انتقال دسته‌بندی‌ها و ویژگی‌ها
         // ⭐ بسیار مهم: این مرحله قبل از ایجاد محصول اتفاق می‌افتد
@@ -660,7 +645,7 @@ class Inventory_Sync_Manager {
     /**
      * انتقال متغیّرهای یک محصول متغیّر از سایت ۱ به محصول والد ساخته‌شده در سایت ۲
      * 
-     * متغیّرها در WooCommerce بخشی از آبجکت محصول نیستند و باید جداگانه
+     * متغیّرها در WooCommerce بخ��ی از آبجکت محصول نیستند و باید جداگانه
      * از endpoint /products/{id}/variations دریافت و در مقصد ساخته شوند.
      * 
      * ⚠️ بسیار مهم: پیش از این تابع، ویژگی‌های محصول (attributes) باید در سایت 2

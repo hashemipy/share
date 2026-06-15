@@ -176,307 +176,63 @@ if (!defined('ABSPATH')) exit;
                         <?php esc_html_e('💾 ذخیره تنظیمات', 'inventory-sync'); ?>
                     </button>
                     <span class="status-message"></span>
-                </div>
-            </div>
         </div>
+    </div>
+    
+    <!-- Tools Tab -->
+    <div id="tools" class="tab-pane">
+        <h2><?php esc_html_e('ابزارها', 'inventory-sync'); ?></h2>
+        <p class="description">
+            <?php esc_html_e('ابزارهایی برای مدیریت سیستم', 'inventory-sync'); ?>
+        </p>
         
-        <!-- Mapping Tab -->
-        <div id="mapping" class="tab-pane">
-            <h2><?php esc_html_e('مرتبط‌سازی محصولات', 'inventory-sync'); ?></h2>
-            <p class="description">
-                <?php esc_html_e('محصولات منتقل‌شده از سایت 1 به سایت 2 و موجودی آن‌ها را مدیریت کنید', 'inventory-sync'); ?>
+        <div style="background: #fff; padding: 20px; border-radius: 4px; border: 1px solid #ddd; margin-top: 20px;">
+            <h3><?php esc_html_e('🗑 پاک کردن اطلاعات', 'inventory-sync'); ?></h3>
+            <p style="color: #666; font-size: 13px; margin-bottom: 15px;">
+                <?php esc_html_e('کش و لاگ‌های سیستم را پاک کنید. این عملیات قابل برگشت نیست!', 'inventory-sync'); ?>
             </p>
             
-            <!-- Automatic sync info -->
-            <div class="inventory-sync-notice notice notice-success" style="margin-bottom: 20px;">
-                <p>
-                    <strong><?php esc_html_e('⚙️ هماهنگ‌سازی خودکار:', 'inventory-sync'); ?></strong>
-                    <?php esc_html_e('موجودی محصولات هر 10 دقیقه خودکار به‌روز می‌شود', 'inventory-sync'); ?>
-                </p>
-                <p id="next-sync-time" style="margin-top: 10px; font-size: 12px; color: #666;">
-                    <?php esc_html_e('بعدی هماهنگ‌سازی: محاسبه می‌شود...', 'inventory-sync'); ?>
-                </p>
-            </div>
-            
-            <div class="mapping-container">
-                <!-- Automatically Mapped Products -->
-                <div class="mapping-section">
-                    <h3>
-                        <?php esc_html_e('✅ محصولات مرتبط‌شده (خودکار)', 'inventory-sync'); ?>
-                        <span class="count-badge auto-mapped-count">0</span>
-                    </h3>
-                    <p style="font-size: 13px; color: #666;">
-                        <?php esc_html_e('محصولاتی که خودکار از سایت 1 به سایت 2 منتقل شده‌اند', 'inventory-sync'); ?>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <div>
+                    <h4><?php esc_html_e('پاک کردن لاگ‌ها', 'inventory-sync'); ?></h4>
+                    <p style="font-size: 12px; color: #999;">
+                        <?php esc_html_e('تمام پیغام‌های خطا و موفقیت را حذف کن', 'inventory-sync'); ?>
                     </p>
-                    <table class="widefat striped" style="margin-top: 10px;">
-                        <thead>
-                            <tr>
-                                <th style="width: 50px;"></th>
-                                <th><?php esc_html_e('نام محصول', 'inventory-sync'); ?></th>
-                                <th><?php esc_html_e('SKU', 'inventory-sync'); ?></th>
-                                <th><?php esc_html_e('موجودی S1', 'inventory-sync'); ?></th>
-                                <th><?php esc_html_e('موجودی S2', 'inventory-sync'); ?></th>
-                                <th><?php esc_html_e('وضعیت', 'inventory-sync'); ?></th>
-                                <th><?php esc_html_e('عملیات', 'inventory-sync'); ?></th>
-                            </tr>
-                        </thead>
-                        <tbody class="auto-mapped-products">
-                            <tr>
-                                <td colspan="7" class="text-center">
-                                    <?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                
-                <!-- Manual Mapping -->
-                <div class="mapping-section" style="margin-top: 40px;">
-                    <h3><?php esc_html_e('🔗 مرتبط‌سازی دستی', 'inventory-sync'); ?></h3>
-                    <p style="font-size: 13px; color: #666;">
-                        <?php esc_html_e('محصولاتی که هنوز مرتبط نشده‌اند را در کنار هم ببینید و دستی مرتبط کنید', 'inventory-sync'); ?>
-                    </p>
-                    
-                    <div class="manual-mapping-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px;">
-                        <!-- Site 1 Products -->
-                        <div>
-                            <h4><?php esc_html_e('سایت 1 - محصولات', 'inventory-sync'); ?></h4>
-                            <input type="text" class="form-control site1-search" 
-                                   placeholder="<?php esc_html_e('جستجو...', 'inventory-sync'); ?>" 
-                                   style="margin-bottom: 10px;">
-                            <div class="products-list site1-unmapped-products" style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 10px;">
-                                <p style="text-align: center; color: #999;">
-                                    <?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?>
-                                </p>
-                            </div>
-                        </div>
-                        
-                        <!-- Site 2 Products -->
-                        <div>
-                            <h4><?php esc_html_e('سایت 2 - محصولات', 'inventory-sync'); ?></h4>
-                            <input type="text" class="form-control site2-search" 
-                                   placeholder="<?php esc_html_e('جستجو...', 'inventory-sync'); ?>" 
-                                   style="margin-bottom: 10px;">
-                            <div class="products-list site2-unmapped-products" style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 10px;">
-                                <p style="text-align: center; color: #999;">
-                                    <?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?>
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="manual-mapping-actions" style="margin-top: 15px;">
-                        <button class="button button-secondary create-manual-mapping-btn" disabled>
-                            <?php esc_html_e('🔗 مرتبط کردن انتخاب شده', 'inventory-sync'); ?>
-                        </button>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="mapping-actions" style="margin-top: 30px;">
-                <button class="button button-primary manual-sync-inventory-btn">
-                    <?php esc_html_e('⚡ همگام‌سازی دستی موجودی', 'inventory-sync'); ?>
-                </button>
-                <button class="button button-secondary refresh-mapping-btn">
-                    <?php esc_html_e('🔄 بازخوانی لیست', 'inventory-sync'); ?>
-                </button>
-            </div>
-        </div>
-        
-        <!-- Transfer Tab -->
-        <div id="transfer" class="tab-pane">
-            <h2><?php esc_html_e('انتقال محصولات', 'inventory-sync'); ?></h2>
-            <p class="description">
-                <?php esc_html_e('محصولات را از سایت 1 به سایت 2 منتقل کنید', 'inventory-sync'); ?>
-            </p>
-            
-            <div class="transfer-container">
-                <div class="transfer-controls">
-                    <label>
-                        <input type="checkbox" id="select-all-transfer">
-                        <?php esc_html_e('انتخاب همه', 'inventory-sync'); ?>
-                    </label>
-                </div>
-                
-                <div class="products-table">
-                    <table class="widefat striped">
-                        <thead>
-                            <tr>
-                                <th><input type="checkbox" class="select-product"></th>
-                                <th><?php esc_html_e('نام محصول', 'inventory-sync'); ?></th>
-                                <th><?php esc_html_e('SKU', 'inventory-sync'); ?></th>
-                                <th><?php esc_html_e('موجودی', 'inventory-sync'); ?></th>
-                                <th><?php esc_html_e('وضعیت', 'inventory-sync'); ?></th>
-                            </tr>
-                        </thead>
-                        <tbody class="transfer-products">
-                            <tr>
-                                <td colspan="5" class="text-center">
-                                    <?php esc_html_e('درحال بارگذاری محصولات...', 'inventory-sync'); ?>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                
-                <div class="transfer-actions">
-                    <button class="button button-primary transfer-selected-btn">
-                        <?php esc_html_e('📤 انتقال محصولات انتخاب شده', 'inventory-sync'); ?>
-                    </button>
-                    <button class="button button-secondary transfer-all-btn">
-                        <?php esc_html_e('📤 انتقال همه محصولات', 'inventory-sync'); ?>
+                    <button class="button button-primary clear-logs-btn" style="background: #dc3545;">
+                        <?php esc_html_e('🗑 پاک کردن لاگ‌ها', 'inventory-sync'); ?>
                     </button>
                 </div>
                 
-                <div class="progress-container" style="display: none;">
-                    <div class="progress-bar">
-                        <div class="progress-fill"></div>
-                    </div>
-                    <p class="progress-text"></p>
+                <div>
+                    <h4><?php esc_html_e('پاک کردن کش', 'inventory-sync'); ?></h4>
+                    <p style="font-size: 12px; color: #999;">
+                        <?php esc_html_e('کش درخواست‌های API را حذف کن', 'inventory-sync'); ?>
+                    </p>
+                    <button class="button button-primary clear-cache-btn" style="background: #6c757d;">
+                        <?php esc_html_e('🗑 پاک کردن کش', 'inventory-sync'); ?>
+                    </button>
                 </div>
+            </div>
+            
+            <div style="margin-top: 20px; padding: 15px; background: #f0f0f0; border-radius: 4px; border-left: 4px solid #ffc107;">
+                <strong><?php esc_html_e('⚠️ اخطار:', 'inventory-sync'); ?></strong>
+                <p style="margin: 5px 0 0 0; font-size: 12px;">
+                    <?php esc_html_e('این عملیات‌ها قابل برگشت نیستند. قبل از اجرا مطمئن شوید.', 'inventory-sync'); ?>
+                </p>
             </div>
         </div>
         
-        <!-- Transferred Products Tab -->
-        <div id="transferred" class="tab-pane">
-            <h2><?php esc_html_e('محصولات منتقل‌شده', 'inventory-sync'); ?></h2>
-            <p class="description">
-                <?php esc_html_e('محصولاتی که با موفقیت از سایت 1 به سایت 2 منتقل شده‌اند، با علامت ✅ مشخص می‌شوند', 'inventory-sync'); ?>
+        <div style="background: #fff; padding: 20px; border-radius: 4px; border: 1px solid #ddd; margin-top: 20px;">
+            <h3><?php esc_html_e('🔄 بازنشانی Cron', 'inventory-sync'); ?></h3>
+            <p style="color: #666; font-size: 13px; margin-bottom: 15px;">
+                <?php esc_html_e('اگر هماهنگ‌سازی خودکار کار نکند، Cron را دوباره ثبت کنید', 'inventory-sync'); ?>
             </p>
             
-            <div class="transferred-container">
-                <div class="transferred-filters">
-                    <input type="text" id="transferred-search" class="form-control" 
-                           placeholder="<?php esc_html_e('جستجو نام محصول...', 'inventory-sync'); ?>" 
-                           style="max-width: 300px;">
-                </div>
-                
-                <table class="widefat striped">
-                    <thead>
-                        <tr>
-                            <th><?php esc_html_e('وضعیت', 'inventory-sync'); ?></th>
-                            <th><?php esc_html_e('نام محصول', 'inventory-sync'); ?></th>
-                            <th><?php esc_html_e('شناسه سایت 1', 'inventory-sync'); ?></th>
-                            <th><?php esc_html_e('شناسه سایت 2', 'inventory-sync'); ?></th>
-                            <th><?php esc_html_e('دسته‌بندی', 'inventory-sync'); ?></th>
-                            <th><?php esc_html_e('ویژگی‌ها', 'inventory-sync'); ?></th>
-                            <th><?php esc_html_e('تاریخ انتقال', 'inventory-sync'); ?></th>
-                            <th><?php esc_html_e('عملیات', 'inventory-sync'); ?></th>
-                        </tr>
-                    </thead>
-                    <tbody class="transferred-list">
-                        <tr>
-                            <td colspan="8" class="text-center">
-                                <?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        
-        <!-- Logs Tab -->
-        <div id="logs" class="tab-pane">
-            <h2><?php esc_html_e('لاگ‌های هماهنگ‌سازی', 'inventory-sync'); ?></h2>
-            
-            <div class="logs-container">
-                <table class="widefat striped">
-                    <thead>
-                        <tr>
-                            <th><?php esc_html_e('تاریخ', 'inventory-sync'); ?></th>
-                            <th><?php esc_html_e('محصول', 'inventory-sync'); ?></th>
-                            <th><?php esc_html_e('عملیات', 'inventory-sync'); ?></th>
-                            <th><?php esc_html_e('از سایت', 'inventory-sync'); ?></th>
-                            <th><?php esc_html_e('به سایت', 'inventory-sync'); ?></th>
-                            <th><?php esc_html_e('وضعیت', 'inventory-sync'); ?></th>
-                            <th><?php esc_html_e('پیام', 'inventory-sync'); ?></th>
-                        </tr>
-                    </thead>
-                    <tbody class="logs-list">
-                        <tr>
-                            <td colspan="7" class="text-center">
-                                <?php esc_html_e('درحال بارگذاری لاگ‌ها...', 'inventory-sync'); ?>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
+            <button class="button button-secondary reset-cron-btn">
+                <?php esc_html_e('🔄 بازنشانی Cron', 'inventory-sync'); ?>
+            </button>
         </div>
     </div>
-</div>
-
-<!-- MODAL: Help Dialogs -->
-<div id="help-modal" class="inventory-sync-modal" style="display: none;">
-    <div class="modal-content">
-        <button class="modal-close">&times;</button>
-        <div class="modal-body"></div>
-    </div>
-</div>
-
-<!-- HELP CONTENT: Hidden content for modals -->
-<div class="help-content" style="display: none;">
-    
-    <!-- Settings Help -->
-    <div id="help-site1-name" class="help-item">
-        <h3>نام سایت شماره 1</h3>
-        <p>یک نام شناسایی برای سایت اول انتخاب کنید تا بتوانید آن را شناخت کنید.</p>
-        <p><strong>مثال:</strong> "فروشگاه اصلی" یا "انبار اصلی"</p>
-    </div>
-    
-    <div id="help-site1-url" class="help-item">
-        <h3>آدرس سایت شماره 1</h3>
-        <p>آدرس کامل و دقیق سایت WooCommerce را وارد کنید.</p>
-        <p><strong>مثال:</strong> https://example.com</p>
-        <p><strong>نکته:</strong> حتما https:// یا http:// را بگنجانید</p>
-    </div>
-    
-    <div id="help-site1-key" class="help-item">
-        <h3>API Key سایت شماره 1</h3>
-        <p><strong>چطور به دست بیاورم؟</strong></p>
-        <ol>
-            <li>وارد داشبورد WooCommerce سایت 1 شوید</li>
-            <li>برو به: WooCommerce > Settings</li>
-            <li>تب Advanced را کلیک کنید</li>
-            <li>API کلیک کنید</li>
-            <li>Create an API Key کلیک کنید</li>
-            <li>"Consumer Key" را کپی کنید و اینجا بگذارید</li>
-        </ol>
-        <p><strong>⚠️ هشدار:</strong> این کلید را با کسی به اشتراک نگذارید!</p>
-    </div>
-    
-    <div id="help-site1-secret" class="help-item">
-        <h3>API Secret سایت شماره 1</h3>
-        <p><strong>چطور به دست بیاورم؟</strong></p>
-        <ol>
-            <li>همان مراحل بالا را دنبال کنید</li>
-            <li>"Consumer Secret" را کپی کنید</li>
-            <li>آن را اینجا بگذارید</li>
-        </ol>
-        <p><strong>💡 نکته:</strong> API Key و Secret باید با هم معتبر باشند</p>
-    </div>
-    
-    <div id="help-sync-direction" class="help-item">
-        <h3>جهت هماهنگ‌سازی</h3>
-        <p>کدام سایت "مرجع" است؟</p>
-        <ul>
-            <li><strong>سایت 1 ← سایت 2:</strong> موجودی سایت 1 مرجع است، موجودی سایت 2 به روز می‌شود</li>
-            <li><strong>سایت 2 ← سایت 1:</strong> موجودی سایت 2 مرجع است، موجودی سایت 1 به روز می‌شود</li>
-            <li><strong>دوطرفه:</strong> موجودی کم‌تر از دو سایت برای هر دو اعمال می‌شود</li>
-        </ul>
-        <p><strong>مثال:</strong> اگر سایت 1 مرجع است و 10 عدد محصول دارد، سایت 2 هم 10 عدد می‌شود</p>
-    </div>
-    
-    <div id="help-auto-sync" class="help-item">
-        <h3>هماهنگ‌سازی خودکار</h3>
-        <p>اگر این گزینه <strong>فعال</strong> باشد:</p>
-        <ul>
-            <li>هر زمان که سفارش ثبت شود، موجودی خودکار به‌روز می‌شود</li>
-            <li>سیستم هر 5 دقیقه موجودی‌ها را چک می‌کند</li>
-            <li>اگر نقصی پیدا شود، دوباره تلاش می‌کند</li>
-        </ul>
-        <p><strong>💡 توصیه:</strong> برای سفارش‌های زیاد، این گزینه را فعال کنید</p>
-    </div>
-    
 </div>
 
 <script>
@@ -514,6 +270,87 @@ document.addEventListener('DOMContentLoaded', function() {
         if (e.target === modal) {
             modal.style.display = 'none';
         }
+    });
+    
+    // Tools handlers
+    const nonce = document.querySelector('input[name="_wpnonce"]')?.value || inventorySyncData.nonce;
+    
+    // پاک کردن لاگ‌ها
+    document.querySelector('.clear-logs-btn').addEventListener('click', function(e) {
+        e.preventDefault();
+        if (!confirm('آیا مطمئن هستید؟ این عملیات قابل برگشت نیست!')) {
+            return;
+        }
+        
+        jQuery.ajax({
+            url: inventorySyncData.ajaxurl,
+            type: 'POST',
+            data: {
+                action: 'inventory_sync_clear_logs',
+                nonce: nonce
+            },
+            success: function(response) {
+                if (response.success) {
+                    alert('لاگ‌ها پاک شدند!');
+                } else {
+                    alert('خطا: ' + response.data);
+                }
+            },
+            error: function() {
+                alert('خطا در حذف لاگ‌ها');
+            }
+        });
+    });
+    
+    // پاک کردن کش
+    document.querySelector('.clear-cache-btn').addEventListener('click', function(e) {
+        e.preventDefault();
+        if (!confirm('آیا مطمئن هستید؟ این عملیات قابل برگشت نیست!')) {
+            return;
+        }
+        
+        jQuery.ajax({
+            url: inventorySyncData.ajaxurl,
+            type: 'POST',
+            data: {
+                action: 'inventory_sync_clear_cache',
+                nonce: nonce
+            },
+            success: function(response) {
+                if (response.success) {
+                    alert('کش پاک شد!');
+                } else {
+                    alert('خطا: ' + response.data);
+                }
+            },
+            error: function() {
+                alert('خطا در حذف کش');
+            }
+        });
+    });
+    
+    // بازنشانی Cron
+    document.querySelector('.reset-cron-btn').addEventListener('click', function(e) {
+        e.preventDefault();
+        
+        jQuery.ajax({
+            url: inventorySyncData.ajaxurl,
+            type: 'POST',
+            data: {
+                action: 'inventory_sync_reset_cron',
+                nonce: nonce
+            },
+            success: function(response) {
+                if (response.success) {
+                    alert('Cron بازنشانی شد!');
+                } else {
+                    alert('خطا: ' + response.data);
+                }
+            },
+            error: function() {
+                alert('خطا در بازنشانی Cron');
+            }
+        });
     });
 });
 </script>

@@ -496,4 +496,63 @@ class Inventory_Sync_Admin {
         
         wp_send_json_success('Mapping حذف شد');
     }
+    
+    /**
+     * پاک کردن تمام لاگ‌ها
+     */
+    public function ajax_clear_logs() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('عدم دسترسی');
+        }
+        
+        global $wpdb;
+        $wpdb->query("TRUNCATE TABLE {$wpdb->prefix}inventory_sync_logs");
+        
+        wp_send_json_success('تمام لاگ‌ها پاک شدند');
+    }
+    
+    /**
+     * پاک کردن کش
+     */
+    public function ajax_clear_cache() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('عدم دسترسی');
+        }
+        
+        // پاک کردن تمام options شروع با inventory_sync_
+        global $wpdb;
+        $wpdb->query(
+            "DELETE FROM {$wpdb->prefix}options WHERE option_name LIKE 'inventory_sync_%' AND option_name NOT LIKE 'inventory_sync_settings_%'"
+        );
+        
+        // پاک کردن transients
+        wp_cache_flush();
+        
+        wp_send_json_success('کش پاک شد');
+    }
+    
+    /**
+     * بازنشانی Cron
+     */
+    public function ajax_reset_cron() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('عدم دسترسی');
+        }
+        
+        // پاک کردن Cron قدیم
+        wp_clear_scheduled_hook('inventory_sync_auto_sync_event');
+        
+        // ثبت دوباره
+        if (!wp_next_scheduled('inventory_sync_auto_sync_event')) {
+            wp_schedule_event(time(), 'inventory_sync_ten_minutes', 'inventory_sync_auto_sync_event');
+        }
+        
+        wp_send_json_success('Cron بازنشانی شد');
+    }
 }

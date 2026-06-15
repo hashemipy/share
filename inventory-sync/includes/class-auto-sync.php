@@ -32,28 +32,20 @@ class Inventory_Sync_Auto_Sync {
     }
     
     /**
-     * اگر موجودی محصول تغییر کند، رکورد تغییر را ذخیره کن
+     * اگر موجودی محصول تغییر کند، **فوری** هماهنگ‌سازی انجام شود
      */
     public function on_product_stock_change($product_id, $stock_qty) {
         // بررسی کن که آیا این محصول منتقل شده است
         $transferred = Inventory_Sync_Database::get_transferred_product_by_site1($product_id);
         
         if ($transferred) {
-            // علامت بگذار که موجودی تغییر کرده است
-            update_option(
-                'inventory_sync_product_changed_' . $product_id,
-                [
-                    'product_id' => $product_id,
-                    'new_stock' => $stock_qty,
-                    'changed_at' => current_time('mysql'),
-                    'site' => 'site1'
-                ]
-            );
+            // ⭐ فوری هماهنگ‌سازی (بدون انتظار Cron)
+            $this->sync_product_immediately($transferred->site1_product_id, $transferred->site2_product_id, $stock_qty);
         }
     }
     
     /**
-     * اگر موجودی متغیر تغییر کند، رکورد تغییر را ذخیره کن
+     * اگر موجودی متغیر تغییر کند، **فوری** هماهنگ‌سازی انجام شود
      */
     public function on_variation_stock_change($product_id, $stock_qty) {
         $product = wc_get_product($product_id);
@@ -62,16 +54,74 @@ class Inventory_Sync_Auto_Sync {
             $transferred = Inventory_Sync_Database::get_transferred_product_by_site1($parent_id);
             
             if ($transferred) {
-                update_option(
-                    'inventory_sync_variation_changed_' . $product_id,
-                    [
-                        'variation_id' => $product_id,
-                        'parent_id' => $parent_id,
-                        'new_stock' => $stock_qty,
-                        'changed_at' => current_time('mysql'),
-                        'site' => 'site1'
-                    ]
+                // ⭐ فوری هماهنگ‌سازی متغیر
+                $this->sync_variation_immediately($product_id, $transferred->site2_product_id, $stock_qty);
+            }
+        }
+    }
+    
+    /**
+     * هماهنگ‌سازی فوری موجودی یک محصول
+     */
+    private function sync_product_immediately($site1_product_id, $site2_product_id, $stock_qty) {
+        $this->init_apis();
+        
+        if (is_wp_error($this->site1_api) || is_wp_error($this->site2_api)) {
+            return;
+        }
+        
+        $sync_direction = Inventory_Sync_Settings::get_sync_direction();
+        
+        // اگر جهت site1 به site2
+        if ($sync_direction === 'site1_to_site2' || $sync_direction === 'bidirectional') {
+            $update_data = ['stock_quantity' => intval($stock_qty)];
+            $result = $this->site2_api->update_product($site2_product_id, $update_data);
+            
+            if (!is_wp_error($result)) {
+                Inventory_Sync_Database::insert_log(
+                    $site1_product_id,
+                    'محصول',
+                    'instant_sync_product',
+                    'سایت 1',
+                    'سایت 2',
+                    'موجودی: ' . $stock_qty,
+                    $site2_product_id,
+                    'success',
+                    'هماهنگ‌سازی فوری موجودی'
                 );
+            }
+        }
+    }
+    
+    /**
+     * هماهنگ‌سازی فوری موجودی یک متغیر
+     */
+    private function sync_variation_immediately($variation_id, $site2_product_id, $stock_qty) {
+        $this->init_apis();
+        
+        if (is_wp_error($this->site1_api) || is_wp_error($this->site2_api)) {
+            return;
+        }
+        
+        $sync_direction = Inventory_Sync_Settings::get_sync_direction();
+        
+        // دریافت متغیرهای سایت 2
+        $variations = $this->site2_api->get_product_variations($site2_product_id);
+        
+        if (!is_wp_error($variations) && !empty($variations)) {
+            // پیدا کردن متغیر صحیح (بر اساس SKU)
+            $site1_product = wc_get_product($variation_id);
+            $site1_sku = $site1_product->get_sku();
+            
+            foreach ($variations as $variation) {
+                if ($variation['sku'] === $site1_sku) {
+                    // اگر جهت site1 به site2
+                    if ($sync_direction === 'site1_to_site2' || $sync_direction === 'bidirectional') {
+                        $update_data = ['stock_quantity' => intval($stock_qty)];
+                        $this->site2_api->update_product($variation['id'], $update_data);
+                    }
+                    break;
+                }
             }
         }
     }
