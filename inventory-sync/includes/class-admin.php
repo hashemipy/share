@@ -302,26 +302,58 @@ class Inventory_Sync_Admin {
             wp_send_json_error('رسائی نہیں');
         }
         
-        $site1_products = wc_get_products(['limit' => 500, 'status' => 'publish']);
-        $site2_products = [];
+        // سائٹ 1 - تمام محصولات (variable اور simple دونوں)
+        $site1_args = [
+            'limit' => 500,
+            'status' => 'publish',
+            'type' => ['simple', 'variable']  // دونوں قسمیں
+        ];
+        $site1_products = wc_get_products($site1_args);
         
-        // اگر remote API ہے تو سائٹ 2 سے بھی حاصل کریں
-        try {
-            $api = new Inventory_Sync_API(
-                Inventory_Sync_Settings::get_site2_url(),
-                Inventory_Sync_Settings::get_site2_key(),
-                Inventory_Sync_Settings::get_site2_secret()
-            );
-            $site2_products = $api->get_products(500) ?: [];
-        } catch (Exception $e) {
-            // API میں مسئلہ - خالی رہے گا
+        $site1_data = [];
+        foreach ($site1_products as $p) {
+            $site1_data[] = [
+                'id' => $p->get_id(),
+                'name' => $p->get_name(),
+                'sku' => $p->get_sku() ?: 'N/A'
+            ];
+        }
+        
+        $site2_data = [];
+        
+        // سائٹ 2 سے محصولات حاصل کریں (اگر تشکیل شدہ ہو)
+        $site2_url = Inventory_Sync_Settings::get_site2_url();
+        $site2_key = Inventory_Sync_Settings::get_site2_key();
+        $site2_secret = Inventory_Sync_Settings::get_site2_secret();
+        
+        if ($site2_url && $site2_key && $site2_secret) {
+            try {
+                $api = new Inventory_Sync_API($site2_url, $site2_key, $site2_secret);
+                $remote_products = $api->get_products(500);
+                
+                // جواب array ہے یا object - دونوں کو handle کریں
+                if (is_array($remote_products)) {
+                    $site2_data = $remote_products;
+                } elseif (is_object($remote_products)) {
+                    $site2_data = json_decode(json_encode($remote_products), true);
+                    if (isset($site2_data['data'])) {
+                        $site2_data = $site2_data['data'];
+                    }
+                }
+            } catch (Exception $e) {
+                // خرابی - خالی رکھیں
+                $site2_data = [];
+            }
+        }
+        
+        // اگر site2_data عددی array نہیں ہے تو array بنائیں
+        if (!is_array($site2_data)) {
+            $site2_data = [];
         }
         
         $data = [
-            'site1' => array_map(function($p) {
-                return ['id' => $p->get_id(), 'name' => $p->get_name(), 'sku' => $p->get_sku()];
-            }, $site1_products),
-            'site2' => $site2_products
+            'site1' => $site1_data,
+            'site2' => $site2_data
         ];
         
         wp_send_json_success($data);
