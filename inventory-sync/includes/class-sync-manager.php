@@ -428,6 +428,8 @@ class Inventory_Sync_Manager {
         }
         
         // ۲. انتقال دسته‌بندی‌ها و ویژگی‌ها
+        // ⭐ بسیار مهم: این مرحله قبل از ایجاد محصول اتفاق می‌افتد
+        // تا متغیرها بتوانند به ویژگی‌های sync‌شده اشاره کنند
         $category_attr_sync = new Inventory_Sync_Category_Attribute_Sync(
             $this->site1_api,
             $this->site2_api
@@ -438,12 +440,13 @@ class Inventory_Sync_Manager {
             $product1['categories'] ?? []
         );
         
-        // انتقال ویژگی‌ها
+        // انتقال ویژگی‌ها (برای محصولات متغیّر، این ضروری است!)
+        // ⭐ این ویژگی‌ها در database mapping ذخیره می‌شوند و متغیرها از آن استفاده می‌کنند
         $attribute_map = $category_attr_sync->sync_product_attributes(
             $product1['attributes'] ?? []
         );
         
-        // ۳. آماده‌سازی داده‌های محصول برای سایت 2
+        // ۳. آماده��سازی داده‌های محصول برای سایت 2
         $product_data = $this->prepare_transfer_data($product1);
         
         // اپدیت دسته‌بندی‌های محصول با mapping جدید
@@ -563,6 +566,9 @@ class Inventory_Sync_Manager {
      * 
      * متغیّرها در WooCommerce بخشی از آبجکت محصول نیستند و باید جداگانه
      * از endpoint /products/{id}/variations دریافت و در مقصد ساخته شوند.
+     * 
+     * ⚠️ بسیار مهم: پیش از این تابع، ویژگی‌های محصول (attributes) باید در سایت 2
+     * sync شده باشند تا متغیرها بتوانند به آن‌ها اشاره کنند.
      */
     private function transfer_variations($site1_product_id, $site2_parent_id, $product_name) {
         $all_variations = [];
@@ -595,6 +601,24 @@ class Inventory_Sync_Manager {
             $page++;
         } while (count($variations) === 100);
         
+        // اگر محصول والد از قبل ویژگی‌ها دارد، آن‌ها را دریافت کن
+        // تا ویژگی‌های متغیرها بتوانند با صحیح reference کنند
+        $parent_product = $this->site2_api->get_product($site2_parent_id);
+        if (is_wp_error($parent_product)) {
+            Inventory_Sync_Database::insert_log(
+                $site1_product_id,
+                $product_name,
+                'get_parent_product_error',
+                'سایت 1',
+                'سایت 2',
+                '',
+                $site2_parent_id,
+                'failed',
+                $parent_product->get_error_message()
+            );
+            return $parent_product;
+        }
+        
         if (empty($all_variations)) {
             Inventory_Sync_Database::insert_log(
                 $site1_product_id,
@@ -610,10 +634,16 @@ class Inventory_Sync_Manager {
             return true;
         }
         
+        // آماده‌سازی ویژگی‌های والد برای استفاده در متغیرها
+        $parent_attrs_for_variations = [];
+        if (!empty($parent_product['attributes']) && is_array($parent_product['attributes'])) {
+            $parent_attrs_for_variations = $parent_product['attributes'];
+        }
+        
         // آماده‌سازی داده‌ی هر متغیّر برای مقصد
         $variations_to_create = [];
         foreach ($all_variations as $idx => $variation) {
-            $variation_data = $this->prepare_variation_data($variation);
+            $variation_data = $this->prepare_variation_data($variation, $parent_attrs_for_variations);
             $variations_to_create[] = $variation_data;
             
             // لاگ دیتیلی برای اولین متغیّر
@@ -691,8 +721,11 @@ class Inventory_Sync_Manager {
     /**
      * آماده‌سازی داده‌ی یک متغیّر برای انتقال به سایت مقصد
      * شامل: قیمت، موجودی، ویژگی‌ها و تصویر
+     * 
+     * @param array $variation داده‌ی متغیر از سایت 1
+     * @param array $parent_attributes ویژگی‌های والد محصول (برای matching)
      */
-    private function prepare_variation_data($variation) {
+    private function prepare_variation_data($variation, $parent_attributes = []) {
         // گرفتن داده‌های اساسی
         $sku = $variation['sku'] ?? '';
         $regular_price = isset($variation['regular_price']) ? (float) $variation['regular_price'] : 0;
@@ -704,7 +737,7 @@ class Inventory_Sync_Manager {
         // ساخت داده‌های متغیّر
         $data = [
             'sku' => strval($sku),
-            'attributes' => $this->prepare_variation_attributes($variation['attributes'] ?? []),
+            'attributes' => $this->prepare_variation_attributes($variation['attributes'] ?? [], $parent_attributes),
         ];
         
         // قیمت (ضروری)
@@ -751,10 +784,33 @@ class Inventory_Sync_Manager {
      * WooCommerce API نیاز دارد:
      * - 'id': شناسه ویژگی عمومی در سایت مقصد (mapping شده)
      * - 'option': نام مقدار ویژگی (مثلاً 'سبز', 'لارج')
+     * 
+     * ⚠️ بسیار مهم: ویژگی‌های متغیر باید دقیقاً همانطور resolve شوند که
+     * در لیست ویژگی والد محصول resolve شده‌اند. در غیر این صورت
+     * WooCommerce واریاسیون را به محصول متصل نمی‌کند.
+     * 
+     * @param array $attributes آرایه ویژگی‌های متغیر از سایت 1
+     * @param array $parent_attributes (اختیاری) ویژگی‌های والد که قبلاً resolve شده‌اند
+     * @return array ویژگی‌های آماده‌شده برای API
      */
-    private function prepare_variation_attributes($attributes) {
+    private function prepare_variation_attributes($attributes, $parent_attributes = []) {
         if (empty($attributes) || !is_array($attributes)) {
             return [];
+        }
+        
+        // اگر ویژگی‌های والد ارائه شده‌اند، آن‌ها را کش کن
+        $parent_attr_map = [];
+        if (!empty($parent_attributes)) {
+            foreach ($parent_attributes as $pattr) {
+                if (isset($pattr['id']) && !empty($pattr['id'])) {
+                    // key: site1_attr_id, value: site2_attr_id (ID شامل است)
+                    // یا name اگر ویژگی سفارشی است
+                    $site1_id = intval($pattr['_site1_id'] ?? 0);
+                    if ($site1_id > 0) {
+                        $parent_attr_map[$site1_id] = $pattr;
+                    }
+                }
+            }
         }
         
         $clean = [];
@@ -768,12 +824,26 @@ class Inventory_Sync_Manager {
                 continue;
             }
             
-            // از همان resolver والد استفاده می‌کنیم تا هویت ویژگی دقیقاً یکی باشد
-            // (در غیر این صورت ووکامرس واریاسیون را به والد متصل نمی‌کند)
-            $item = $this->resolve_attribute_identity($site1_attr_id, $attr_name);
-            $item['option'] = $attr_option;
+            // اگر ویژگی والد دارای mapping است، از آن استفاده کن
+            $item = null;
+            if (isset($parent_attr_map[$site1_attr_id])) {
+                // از ویژگی والد کپی کن (معمولاً دارای 'id' است)
+                $item = [
+                    'id' => $parent_attr_map[$site1_attr_id]['id'] ?? null,
+                ];
+                if (!empty($parent_attr_map[$site1_attr_id]['name'])) {
+                    $item['name'] = $parent_attr_map[$site1_attr_id]['name'];
+                }
+            } else {
+                // در غیر این صورت resolve کن
+                $item = $this->resolve_attribute_identity($site1_attr_id, $attr_name);
+            }
             
-            $clean[] = $item;
+            // اضافه کردن option
+            if ($item !== null) {
+                $item['option'] = $attr_option;
+                $clean[] = $item;
+            }
         }
         
         return $clean;
@@ -837,6 +907,8 @@ class Inventory_Sync_Manager {
      * تا ووکامرس بتواند واریاسیون‌ها را به ویژگی والد متصل کند.
      * - ویژگی گلوبال: با id (مپ‌شده به سایت ۲) ارسال می‌شود
      * - ویژگی سفارشی: با name ارسال می‌شود
+     * 
+     * ⚠️ اضافه شد: marker _site1_id تا متغیرها بتوانند ویژگی والد را صحیح match کنند
      */
     private function prepare_attributes($attributes) {
         if (empty($attributes) || ! is_array($attributes)) {
@@ -860,6 +932,11 @@ class Inventory_Sync_Manager {
             $item['variation'] = isset($attr['variation']) ? (bool) $attr['variation'] : false;
             $item['options']   = $attr['options'] ?? [];
             
+            // ⭐ علامت خصوصی برای matching متغیرها (API WooCommerce این را نادیده می‌گیرد)
+            if ($site1_id > 0) {
+                $item['_site1_id'] = $site1_id;
+            }
+            
             $clean[] = $item;
         }
         
@@ -868,6 +945,11 @@ class Inventory_Sync_Manager {
     
     /**
      * تعیین هویت یک ویژگی در سایت مقصد بر اساس ویژگی سایت مبدأ.
+     * 
+     * ترتیب اولویت:
+     * 1. جدول mapping (اگر ویژگی قبلاً انتقال یافته)
+     * 2. جستجو با نام در سایت 2
+     * 3. ویژگی سفارشی با نام (اگر گلوبال نباشد)
      * 
      * @param int    $site1_attr_id شناسه ویژگی در سایت ۱ (۰ یعنی سفارشی)
      * @param string $attr_name      نام ویژگی
@@ -882,25 +964,63 @@ class Inventory_Sync_Manager {
         }
         
         // ۱) جستجو در جدول mapping (سریع‌ترین راه)
+        // ⭐ این اولویت اول است چون قبلاً انتقال یافته‌است
         $mapping = Inventory_Sync_Database::get_attribute_mapping($site1_attr_id);
         if ($mapping && !empty($mapping->site2_attribute_id)) {
             return ['id' => intval($mapping->site2_attribute_id)];
         }
         
         // ۲) جستجو بر اساس نام در ویژگی‌های سایت ۲ (با کش)
+        // ⭐ اگر ویژگی هنوز sync نشده، اما به نام موجود است
         if (!empty($attr_name)) {
             if ($this->site2_attributes_cache === null) {
                 $attrs = $this->site2_api->get_attributes();
                 $this->site2_attributes_cache = (!is_wp_error($attrs) && is_array($attrs)) ? $attrs : [];
+                
+                // لاگ اگر cache خالی است
+                if (empty($this->site2_attributes_cache)) {
+                    Inventory_Sync_Database::insert_log(
+                        0,
+                        'Attributes Cache',
+                        'attributes_cache_empty',
+                        'سایت 2',
+                        'سایت 2',
+                        'site1_attr_id: ' . $site1_attr_id,
+                        'attr_name: ' . $attr_name,
+                        'warning',
+                        'کش ویژگی‌های سایت 2 خالی است'
+                    );
+                }
             }
+            
             foreach ($this->site2_attributes_cache as $a) {
                 if (strtolower($a['name'] ?? '') === strtolower($attr_name)) {
+                    Inventory_Sync_Database::insert_log(
+                        0,
+                        $attr_name,
+                        'attribute_resolved_by_name',
+                        'سایت 1 (ID: ' . $site1_attr_id . ')',
+                        'سایت 2',
+                        'Mapping جدول پیدا نشد',
+                        'جستجو بر اساس نام: ' . $a['id'],
+                        'info'
+                    );
                     return ['id' => intval($a['id'])];
                 }
             }
         }
         
         // ۳) در نهایت به‌صورت ویژگی سفارشی با نام
+        Inventory_Sync_Database::insert_log(
+            0,
+            $attr_name,
+            'attribute_resolved_as_custom',
+            'سایت 1 (ID: ' . $site1_attr_id . ')',
+            'سایت 2',
+            'نه mapping و نه نام موجود',
+            'ساختن ویژگی سفارشی: ' . $attr_name,
+            'warning'
+        );
         return ['name' => $attr_name];
     }
     
