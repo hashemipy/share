@@ -57,35 +57,8 @@ class Inventory_Sync_Manager {
         
         // جب محصول محفوظ ہو تو check کریں
         add_action('woocommerce_update_product', [$this, 'sync_on_product_update'], 20, 1);
-        add_action('woocommerce_save_product_variation', [$this, 'sync_on_variation_update'], 20, 1);
-        
-        // متغیر موجودی میں تبدیلی
-        add_action('woocommerce_product_inventory_status_changed', [$this, 'sync_on_inventory_status_change'], 10, 3);
     }
     
-    /**
-     * هنگام بروزرسانی/ذخیره محصول، اگر در mapping باشد sync کن
-     */
-    public function sync_on_product_update($product_id) {
-        if (!Inventory_Sync_Settings::get_auto_sync_enabled()) {
-            return;
-        }
-        
-        global $wpdb;
-        $mapping = $wpdb->get_row(
-            $wpdb->prepare(
-                "SELECT id FROM {$wpdb->prefix}inventory_sync_mapping 
-                 WHERE (site1_product_id = %d OR site2_product_id = %d) 
-                 AND sync_enabled = 1 LIMIT 1",
-                $product_id,
-                $product_id
-            )
-        );
-        
-        if ($mapping) {
-            wp_schedule_single_event(time() + 5, 'inventory_sync_mapping', [$mapping->id]);
-        }
-    }
     
     /**
      * sync همه‌ی mappingهای فعال (handler رویداد فوری)
@@ -195,8 +168,9 @@ class Inventory_Sync_Manager {
     }
     
     /**
-     * جب متغیر محصول اپڈیٹ ہو
+     * متزامن‌سازی موجودی - محصول کی نقل دیگر سایت پر ہوسکے
      */
+
     public function sync_on_variation_update($variation_id, $variation_obj) {
         if (!Inventory_Sync_Settings::get_auto_sync_enabled()) {
             return;
@@ -837,7 +811,7 @@ class Inventory_Sync_Manager {
     /**
      * انتقال متغیّرهای یک محصول متغیّر از سایت ۱ به محصول والد ساخته‌شده در سایت ۲
      * 
-     * متغیّرها در WooCommerce بخشی از آبجکت محصول نیستند و باید جداگانه
+     * متغیّرها در WooCommerce بخشی از آبجکت محصول نیستند و باید جدا��انه
      * از endpoint /products/{id}/variations دریافت و در مقصد ساخته شوند.
      * 
      * ⚠️ بسیار مهم: پیش از این تابع، ویژگی‌های محصول (attributes) باید در سایت 2
@@ -1218,7 +1192,7 @@ class Inventory_Sync_Manager {
                 continue;
             }
             
-            // هویت ویژگی در سایت ۲ (id برای گلوبال، name برای سفارشی)
+            // ��ویت ویژگی در سایت ۲ (id برای گلوبال، name برای سفارشی)
             $item = $this->resolve_attribute_identity($site1_id, $name);
             
             $item['position']  = isset($attr['position']) ? intval($attr['position']) : 0;
