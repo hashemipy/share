@@ -30,6 +30,16 @@ class Inventory_Sync_Manager {
     }
     
     /**
+     * پاک کردن تمام کش‌ها
+     * ⭐ بسیار مهم: این متد را هر بار بعد از transfer محصول فراخوانی کنید
+     * تا اطلاعات درست برای محصول بعدی استفاده شود
+     */
+    private function clear_cache() {
+        $this->site2_attributes_cache = null;
+        // اگر cache‌های دیگری هم دارید، آن‌ها را نیز اضافه کنید
+    }
+    
+    /**
      * شنیدن تغییرات موجودی و فروش‌ها
      */
     private function init_hooks() {
@@ -421,7 +431,32 @@ class Inventory_Sync_Manager {
             
             // اگر SKU خالی است، یک SKU منحصر‌به‌فردی تولید کن
             if (empty($sku_to_use)) {
-                $sku_to_use = 'prod-' . time() . '-' . $site1_product_id;
+                // ⭐ راه بهتر برای generate SKU:
+                // site1_product_id منحصر به فرد است و هرگز تکرار نمی‌شود
+                // مقدار random نیز برای اطمینان اضافه می‌شود
+                $sku_to_use = 'site1-' . $site1_product_id . '-' . bin2hex(random_bytes(4));
+                
+                // بررسی مجدد اینکه این SKU generate شده نیز در سایت 2 وجود ندارد
+                $attempt = 0;
+                while ($this->site2_api->product_exists_by_sku($sku_to_use) && $attempt < 5) {
+                    $sku_to_use = 'site1-' . $site1_product_id . '-' . bin2hex(random_bytes(4));
+                    $attempt++;
+                }
+                
+                if ($attempt >= 5) {
+                    Inventory_Sync_Database::insert_log(
+                        $site1_product_id,
+                        $product_name,
+                        'sku_generation_failed',
+                        'سایت 1',
+                        'سایت 2',
+                        'SKU اصلی خالی است و نتوانستیم SKU منحصر به فرد تولید کنیم',
+                        '',
+                        'failed',
+                        'بعد از 5 تلاش، SKU منحصر به فردی تولید نشد'
+                    );
+                    return new WP_Error('sku_generation_failed', 'نتوانستیم SKU منحصر به فردی برای محصول تولید کنیم');
+                }
             }
             
             $product1['sku'] = $sku_to_use;
@@ -468,6 +503,17 @@ class Inventory_Sync_Manager {
         // ۴. ایجاد یا بروز‌رسانی محصول در سایت 2
         if ($site2_product_id !== null) {
             // محصول موجود - بروز کن
+            Inventory_Sync_Database::insert_log(
+                $site1_product_id,
+                $product_name,
+                'update_product_start',
+                'سایت 1',
+                'سایت 2',
+                json_encode(['sku' => $product_data['sku']]),
+                $site2_product_id,
+                'info',
+                'شروع بروزرسانی محصول موجود'
+            );
             $result = $this->site2_api->update_product($site2_product_id, $product_data);
         } else {
             // محصول جدید - ایجاد کن
@@ -487,6 +533,29 @@ class Inventory_Sync_Manager {
         }
         
         if (is_wp_error($result)) {
+            $error_msg = $result->get_error_message();
+            
+            // ⭐ اگر خطا به خاطر SKU تکراری است
+            // و محصول موجود است، سعی کن آپدیت کن
+            if (stripos($error_msg, 'already present') !== false && $site2_product_id !== null) {
+                Inventory_Sync_Database::insert_log(
+                    $site1_product_id,
+                    $product_name,
+                    'skipping_duplicate_sku',
+                    'سایت 1',
+                    'سایت 2',
+                    json_encode(['sku' => $product_data['sku']]),
+                    $site2_product_id,
+                    'warning',
+                    'محصول با این SKU قبلاً در سایت 2 موجود است'
+                );
+                
+                // محصول موجود است، کش را پاک کن و برگردان موفقیت
+                $this->clear_cache();
+                return ['id' => $site2_product_id];
+            }
+            
+            // خطای واقعی - لاگ کن و برگردان
             Inventory_Sync_Database::insert_log(
                 $site1_product_id,
                 $product_name,
@@ -496,7 +565,7 @@ class Inventory_Sync_Manager {
                 json_encode($product_data),
                 $site2_product_id ?? '',
                 'failed',
-                $result->get_error_message()
+                $error_msg
             );
             
             Inventory_Sync_Database::add_transferred_product(
@@ -504,8 +573,11 @@ class Inventory_Sync_Manager {
                 $site2_product_id ?? 0,
                 $product_name,
                 'failed',
-                $result->get_error_message()
+                $error_msg
             );
+            
+            // ⭐ پاک کردن کش حتی در صورت خطا
+            $this->clear_cache();
             
             return $result;
         }
@@ -545,6 +617,9 @@ class Inventory_Sync_Manager {
             $product_name,
             'success'
         );
+        
+        // ⭐ بسیار مهم: پاک کردن کش برای محصول بعدی
+        $this->clear_cache();
         
         // لاگ موفقیت
         Inventory_Sync_Database::insert_log(
@@ -643,7 +718,12 @@ class Inventory_Sync_Manager {
         // آماده‌سازی داده‌ی هر متغیّر برای مقصد
         $variations_to_create = [];
         foreach ($all_variations as $idx => $variation) {
-            $variation_data = $this->prepare_variation_data($variation, $parent_attrs_for_variations);
+            $variation_data = $this->prepare_variation_data(
+                $variation,
+                $parent_attrs_for_variations,
+                $idx + 1,
+                $site2_parent_id
+            );
             $variations_to_create[] = $variation_data;
             
             // لاگ دیتیلی برای اولین متغیّر
@@ -724,8 +804,10 @@ class Inventory_Sync_Manager {
      * 
      * @param array $variation داده‌ی متغیر از سایت 1
      * @param array $parent_attributes ویژگی‌های والد محصول (برای matching)
+     * @param int $variation_index شماره متغیر (برای generate SKU منحصر به فرد)
+     * @param int $parent_product_id شناسه محصول والد
      */
-    private function prepare_variation_data($variation, $parent_attributes = []) {
+    private function prepare_variation_data($variation, $parent_attributes = [], $variation_index = 0, $parent_product_id = 0) {
         // گرفتن داده‌های اساسی
         $sku = $variation['sku'] ?? '';
         $regular_price = isset($variation['regular_price']) ? (float) $variation['regular_price'] : 0;
@@ -733,6 +815,20 @@ class Inventory_Sync_Manager {
         $manage_stock = $variation['manage_stock'] ?? false;
         $stock_quantity = isset($variation['stock_quantity']) ? intval($variation['stock_quantity']) : 0;
         $stock_status = $variation['stock_status'] ?? 'instock';
+        
+        // ⭐ اگر SKU خالی است، یک SKU منحصر به فرد تولید کن
+        if (empty($sku)) {
+            $sku = 'var-' . $parent_product_id . '-' . $variation_index . '-' . bin2hex(random_bytes(3));
+        }
+        
+        // ⭐ اگر SKU موجود است، بررسی کن که منحصر به فرد است
+        // (برای اطمینان اینکه هنگام batch variations، SKU‌ها تکراری نباشند)
+        $attempt = 0;
+        $original_sku = $sku;
+        while ($this->site2_api->product_exists_by_sku($sku) && $attempt < 3) {
+            $sku = $original_sku . '-' . bin2hex(random_bytes(2));
+            $attempt++;
+        }
         
         // ساخت داده‌های متغیّر
         $data = [
