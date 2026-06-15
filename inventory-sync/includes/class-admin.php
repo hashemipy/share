@@ -176,30 +176,67 @@ class Inventory_Sync_Admin {
         
         global $wpdb;
         
-        $site1_id = intval($_POST['site1_id'] ?? 0);
-        $site2_id = intval($_POST['site2_id'] ?? 0);
-        $site1_sku = sanitize_text_field($_POST['site1_sku'] ?? '');
-        $site2_sku = sanitize_text_field($_POST['site2_sku'] ?? '');
+        $site1_id   = intval($_POST['site1_id']   ?? 0);
+        $site2_id   = intval($_POST['site2_id']   ?? 0);
+        $site1_sku  = sanitize_text_field($_POST['site1_sku']  ?? '');
+        $site2_sku  = sanitize_text_field($_POST['site2_sku']  ?? '');
+        $site1_name = sanitize_text_field($_POST['site1_name'] ?? '');
+        $site2_name = sanitize_text_field($_POST['site2_name'] ?? '');
         
         if (!$site1_id || !$site2_id) {
             wp_send_json_error('شناسه‌های محصول مورد نیاز است');
         }
         
-        $result = $wpdb->insert(
-            $wpdb->prefix . 'inventory_sync_mapping',
-            [
-                'site1_product_id' => $site1_id,
-                'site2_product_id' => $site2_id,
-                'site1_sku' => $site1_sku,
-                'site2_sku' => $site2_sku,
-                'sync_enabled' => 1
-            ]
+        // بررسی اینکه محصولات قبلاً در mapping دیگری نباشند
+        $conflict = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}inventory_sync_mapping
+                 WHERE (site1_product_id = %d OR site2_product_id = %d
+                     OR site1_product_id = %d OR site2_product_id = %d)
+                 AND NOT (site1_product_id = %d AND site2_product_id = %d)
+                 LIMIT 1",
+                $site1_id, $site1_id,
+                $site2_id, $site2_id,
+                $site1_id, $site2_id
+            )
         );
         
-        if ($result) {
-            wp_send_json_success('نقشه‌برداری ذخیره شد');
+        if ($conflict) {
+            wp_send_json_error('یکی از محصولات انتخابی قبلاً در یک مرتبط‌سازی دیگر ثبت شده است');
+        }
+        
+        // INSERT ... ON DUPLICATE KEY UPDATE (unique: site1_product_id, site2_product_id)
+        $result = $wpdb->query(
+            $wpdb->prepare(
+                "INSERT INTO {$wpdb->prefix}inventory_sync_mapping
+                 (site1_product_id, site2_product_id, site1_product_name, site2_product_name, site1_sku, site2_sku, sync_enabled, sync_status)
+                 VALUES (%d, %d, %s, %s, %s, %s, 1, 'pending')
+                 ON DUPLICATE KEY UPDATE
+                    site1_product_name = VALUES(site1_product_name),
+                    site2_product_name = VALUES(site2_product_name),
+                    site1_sku = VALUES(site1_sku),
+                    site2_sku = VALUES(site2_sku),
+                    sync_enabled = 1",
+                $site1_id,
+                $site2_id,
+                $site1_name,
+                $site2_name,
+                $site1_sku,
+                $site2_sku
+            )
+        );
+        
+        if ($result !== false) {
+            $mapping_id = $wpdb->insert_id ?: $wpdb->get_var(
+                $wpdb->prepare(
+                    "SELECT id FROM {$wpdb->prefix}inventory_sync_mapping WHERE site1_product_id = %d AND site2_product_id = %d",
+                    $site1_id,
+                    $site2_id
+                )
+            );
+            wp_send_json_success(['message' => 'مرتبط‌سازی ذخیره شد', 'mapping_id' => $mapping_id]);
         } else {
-            wp_send_json_error('خطا در ذخیره');
+            wp_send_json_error('خطا در ذخیره: ' . $wpdb->last_error);
         }
     }
     

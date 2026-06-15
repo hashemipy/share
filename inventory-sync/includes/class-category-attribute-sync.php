@@ -166,32 +166,43 @@ class Inventory_Sync_Category_Attribute_Sync {
         }
         
         foreach ($product_attributes as $attr) {
-            $attribute_id = $attr['id'] ?? 0;
+            $attribute_id   = $attr['id']   ?? 0;
             $attribute_name = $attr['name'] ?? '';
             
             if (!$attribute_id || !$attribute_name) {
                 continue;
             }
             
-            // دریافت اطلاعات کامل ویژگی
+            // ۱. بررسی mapping از قبل موجود در DB
+            $db_mapping = Inventory_Sync_Database::get_attribute_mapping($attribute_id);
+            if ($db_mapping && !empty($db_mapping->site2_attribute_id)) {
+                $site2_attribute_id = intval($db_mapping->site2_attribute_id);
+                // همچنان terms را sync کن (ممکن است terms جدید اضافه شده باشد)
+                $this->sync_attribute_terms($attribute_id, $site2_attribute_id, $attribute_name);
+                $attribute_map[$attribute_id] = $site2_attribute_id;
+                continue;
+            }
+            
+            // ۲. دریافت اطلاعات کامل ویژگی از سایت ۱
             $full_attribute = $this->site1_api->get_attribute($attribute_id);
             
             if (is_wp_error($full_attribute)) {
                 continue;
             }
             
-            // بررسی ویژگی موجود در سایت 2
+            // ۳. بررسی ویژگی موجود در سایت 2 (جستجو بر اساس نام)
             $existing_attribute = $this->find_existing_attribute($attribute_name);
             
             if ($existing_attribute) {
-                $site2_attribute_id = $existing_attribute['id'];
+                $site2_attribute_id  = $existing_attribute['id'];
+                $site2_attribute_name = $existing_attribute['name'];
             } else {
-                // ایجاد ویژگی جدید در سایت 2
+                // ۴. ایجاد ویژگی جدید در سایت 2
                 $new_attribute_data = [
-                    'name' => $full_attribute['name'],
-                    'slug' => $full_attribute['slug'],
-                    'type' => $full_attribute['type'] ?? 'select',
-                    'order_by' => $full_attribute['order_by'] ?? 'menu_order',
+                    'name'         => $full_attribute['name'],
+                    'slug'         => $full_attribute['slug'] ?? sanitize_title($full_attribute['name']),
+                    'type'         => $full_attribute['type'] ?? 'select',
+                    'order_by'     => $full_attribute['order_by'] ?? 'menu_order',
                     'has_archives' => $full_attribute['has_archives'] ?? false
                 ];
                 
@@ -199,46 +210,35 @@ class Inventory_Sync_Category_Attribute_Sync {
                 
                 if (is_wp_error($new_attribute)) {
                     Inventory_Sync_Database::insert_log(
-                        0,
-                        $full_attribute['name'],
-                        'sync_attribute',
-                        'سایت 1',
-                        'سایت 2',
-                        '',
-                        '',
-                        'failed',
+                        0, $full_attribute['name'], 'sync_attribute',
+                        'سایت 1', 'سایت 2', '', '', 'failed',
                         $new_attribute->get_error_message()
                     );
                     continue;
                 }
                 
-                $site2_attribute_id = $new_attribute['id'];
+                $site2_attribute_id   = $new_attribute['id'];
+                $site2_attribute_name = $new_attribute['name'];
                 
                 Inventory_Sync_Database::insert_log(
-                    0,
-                    $full_attribute['name'],
-                    'sync_attribute',
-                    'سایت 1',
-                    'سایت 2',
-                    '',
-                    $new_attribute['name'],
-                    'success'
+                    0, $full_attribute['name'], 'sync_attribute',
+                    'سایت 1', 'سایت 2', '', $site2_attribute_name, 'success'
                 );
             }
             
-            // انتقال تکیه‌های ویژگی (Attribute Terms)
+            // ۵. انتقال تکیه‌های ویژگی
             $this->sync_attribute_terms(
                 $attribute_id,
                 $site2_attribute_id,
                 $full_attribute['name']
             );
             
-            // ذخیره نقشه‌برداری
+            // ۶. ذخیره mapping در DB
             Inventory_Sync_Database::add_attribute_mapping(
                 $attribute_id,
                 $site2_attribute_id,
                 $full_attribute['name'],
-                $existing_attribute ? $existing_attribute['name'] : $new_attribute['name'],
+                $site2_attribute_name,
                 $full_attribute['type'] ?? 'select'
             );
             

@@ -204,27 +204,32 @@
         saveMapping: function(e) {
             e.preventDefault();
             
-            const site1Id  = $('#map-site1-product').val();
-            const site2Id  = $('#map-site2-product').val();
-            const site1Sku = $('#map-site1-product option:selected').data('sku') || '';
-            const site2Sku = $('#map-site2-product option:selected').data('sku') || '';
+            const $s1Opt = $('#map-site1-product option:selected');
+            const $s2Opt = $('#map-site2-product option:selected');
+            const site1Id   = $('#map-site1-product').val();
+            const site2Id   = $('#map-site2-product').val();
+            const site1Sku  = $s1Opt.data('sku')  || '';
+            const site2Sku  = $s2Opt.data('sku')  || '';
+            const site1Name = $s1Opt.data('name') || '';
+            const site2Name = $s2Opt.data('name') || '';
+            
+            const $status = $('#mapping-form-status');
             
             if (!site1Id || !site2Id) {
-                $('#mapping-form-status')
-                    .removeClass('success').addClass('error')
+                $status.removeClass('success').addClass('error')
                     .text('لطفا هر دو محصول را انتخاب کنید');
                 return;
             }
             
             if (site1Id === site2Id) {
-                $('#mapping-form-status')
-                    .removeClass('success').addClass('error')
+                $status.removeClass('success').addClass('error')
                     .text('محصولات یکسان انتخاب شده‌اند');
                 return;
             }
             
             const $btn = $('#save-mapping-btn');
             $btn.attr('disabled', true).text(inventorySyncData.i18n.saving);
+            $status.removeClass('success error').text('');
             
             $.ajax({
                 url: inventorySyncData.ajaxurl,
@@ -232,32 +237,29 @@
                 data: {
                     action: 'inventory_sync_save_mapping',
                     _ajax_nonce: inventorySyncData.nonce,
-                    site1_id: site1Id,
-                    site2_id: site2Id,
-                    site1_sku: site1Sku,
-                    site2_sku: site2Sku
+                    site1_id:   site1Id,
+                    site2_id:   site2Id,
+                    site1_sku:  site1Sku,
+                    site2_sku:  site2Sku,
+                    site1_name: site1Name,
+                    site2_name: site2Name
                 },
                 success: (response) => {
                     if (response.success) {
-                        $('#mapping-form-status')
-                            .removeClass('error').addClass('success')
-                            .text('مرتبط‌سازی ذخیره شد');
-                        // ریست dropdown ها
-                        $('#map-site1-product').val('');
-                        $('#map-site2-product').val('');
-                        $('#map-site1-preview').text('');
-                        $('#map-site2-preview').text('');
+                        $status.removeClass('error').addClass('success')
+                            .text('مرتبط‌سازی با موفقیت ذخیره شد');
+                        // ریست dropdown ها و preview
+                        $('#map-site1-product, #map-site2-product').val('');
+                        $('#map-site1-preview, #map-site2-preview').text('');
                         // رفرش جدول
                         this.loadMappings();
                     } else {
-                        $('#mapping-form-status')
-                            .removeClass('success').addClass('error')
+                        $status.removeClass('success').addClass('error')
                             .text(response.data || inventorySyncData.i18n.error);
                     }
                 },
                 error: () => {
-                    $('#mapping-form-status')
-                        .removeClass('success').addClass('error')
+                    $status.removeClass('success').addClass('error')
                         .text(inventorySyncData.i18n.error);
                 },
                 complete: () => {
