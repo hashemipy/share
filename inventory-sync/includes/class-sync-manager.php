@@ -41,26 +41,41 @@ class Inventory_Sync_Manager {
     
     /**
      * شنیدن تغییرات موجودی و فروش‌ها
+     * 
+     * ⭐ بسیار مهم:
+     * - تمام hooks در اینجا ثبت شده‌اند
+     * - هیچ وابستگی به WordPress Cron نیست
+     * - تمام operations فوری و همزمان انجام می‌شود
      */
     private function init_hooks() {
-        // وقتی سفارش کامل شود، موجودی را sync کن
-        add_action('woocommerce_order_status_completed', [$this, 'sync_on_order'], 10, 1);
-        
-        // وقتی موجودی دستی تغییر کند (محصول ساده)
+        // ۱. وقتی موجودی دستی تغییر کند (محصول ساده)
         add_action('woocommerce_product_set_stock', [$this, 'sync_on_stock_change'], 10, 1);
-        // وقتی موجودی یک واریاسیون تغییر کند
+        
+        // ۲. وقتی موجودی یک واریاسیون تغییر کند
         add_action('woocommerce_variation_set_stock', [$this, 'sync_on_stock_change'], 10, 1);
-        // وقتی محصول ذخیره/ویرایش شود (پوشش تغییرات دستی موجودی در ادمین)
+        
+        // ۳. وقتی محصول ذخیره/ویرایش شود (پوشش تغییرات دستی موجودی در ادمین)
         add_action('woocommerce_update_product', [$this, 'sync_on_product_update'], 20, 1);
         
-        // *** بسیار مهم: handler رویدادهای زمان‌بندی‌شده ***
-        // بدون این‌ها، sync خودکار هرگز اجرا نمی‌شد
-        add_action('inventory_sync_mapping', [$this, 'sync_inventory'], 10, 1);
-        add_action('inventory_sync_immediate', [$this, 'sync_all_mappings'], 10, 0);
+        // ۴. وقتی سفارش ایجاد شود (خرید جدید)
+        // این hook قبل از پردازش stock reduction فراخوانی می‌شود
+        add_action('woocommerce_order_item_quantity', [$this, 'on_order_item_quantity_change'], 10, 2);
+        
+        // ۵. وقتی موجودی سفارش کاهش یافته (کاهش موجودی برای سفارش)
+        add_action('woocommerce_reduce_order_stock', [$this, 'on_product_sold'], 10, 1);
+        
+        // ۶. وقتی موجودی سفارش restore شود (برگرداندن محصول)
+        add_action('woocommerce_restore_order_stock', [$this, 'on_product_sold'], 10, 1);
+        
+        // ۷. وقتی status سفارش تغییر کند (بخصوص به completed)
+        add_action('woocommerce_order_status_changed', [$this, 'on_order_status_change'], 10, 3);
     }
     
     /**
      * هنگام بروزرسانی/ذخیره محصول، اگر در mapping باشد sync کن
+     * 
+     * ⭐ مهم: این متد فوری اجرا می‌شود، نه از طریق Cron
+     * چون Cron در بسیاری سرورها غیرفعال است
      */
     public function sync_on_product_update($product_id) {
         if (!Inventory_Sync_Settings::get_auto_sync_enabled()) {
@@ -79,7 +94,8 @@ class Inventory_Sync_Manager {
         );
         
         if ($mapping) {
-            wp_schedule_single_event(time() + 5, 'inventory_sync_mapping', [$mapping->id]);
+            // ⭐ بهبود: اجرای فوری بدون وابستگی به Cron
+            $this->sync_inventory($mapping->id);
         }
     }
     
@@ -116,6 +132,14 @@ class Inventory_Sync_Manager {
      * هنگام تغییر موجودی - تمام mapped محصولات را sync کن
      * این متد هم برای محصول ساده و هم برای واریاسیون فراخوانی می‌شود
      */
+    /**
+     * وقتی موجودی محصول تغییر کند (دستی یا از طریق خرید)
+     * 
+     * ⭐ بسیار مهم:
+     * - این hook برای محصولات ساده و متغیّر کار می‌کند
+     * - اجرای فوری بدون وابستگی به Cron
+     * - تاخیر کوچک (500ms) برای جلوگیری از duplicate calls
+     */
     public function sync_on_stock_change($product) {
         if (!Inventory_Sync_Settings::get_auto_sync_enabled()) {
             return;
@@ -136,7 +160,7 @@ class Inventory_Sync_Manager {
         // پیدا کن این محصول در کدام mapping قرار دارد
         $mapping = $wpdb->get_row(
             $wpdb->prepare(
-                "SELECT * FROM {$wpdb->prefix}inventory_sync_mapping 
+                "SELECT id FROM {$wpdb->prefix}inventory_sync_mapping 
                  WHERE (site1_product_id = %d OR site2_product_id = %d) 
                  AND sync_enabled = 1 LIMIT 1",
                 $product_id,
@@ -145,12 +169,10 @@ class Inventory_Sync_Manager {
         );
         
         if ($mapping) {
-            // برنامه‌ریزی کن برای sync
-            wp_schedule_single_event(
-                time() + 3,
-                'inventory_sync_mapping',
-                [$mapping->id]
-            );
+            // ⭐ بهبود: اجرای فوری بدون وابستگی به Cron
+            // تاخیر کوچک برای جلوگیری از concurrent calls
+            sleep(0.5); // 500ms تاخیر
+            $this->sync_inventory($mapping->id);
         }
     }
     
@@ -1309,6 +1331,115 @@ class Inventory_Sync_Manager {
                     'retry_count' => 0
                 ]
             );
+        }
+    }
+    
+    /**
+     * وقتی موجودی یک محصول در سفارش تغییر کند
+     * 
+     * @param int $quantity - مقدار جدید
+     * @param WC_Order_Item_Product $item - آیتم سفارش
+     */
+    public function on_order_item_quantity_change($quantity, $item) {
+        if (!Inventory_Sync_Settings::get_auto_sync_enabled()) {
+            return;
+        }
+        
+        // دریافت شناسه محصول
+        $product_id = $item->get_product_id();
+        if (!$product_id) {
+            return;
+        }
+        
+        // اگر واریاسیون است، والد را بگیر
+        $product = $item->get_product();
+        if ($product && method_exists($product, 'get_parent_id') && $product->get_parent_id()) {
+            $product_id = $product->get_parent_id();
+        }
+        
+        global $wpdb;
+        $mapping = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}inventory_sync_mapping 
+                 WHERE (site1_product_id = %d OR site2_product_id = %d) 
+                 AND sync_enabled = 1 LIMIT 1",
+                $product_id,
+                $product_id
+            )
+        );
+        
+        if ($mapping) {
+            $this->sync_inventory($mapping->id);
+        }
+    }
+    
+    /**
+     * وقتی محصول فروخته شود (سفارش کامل / موجودی کاهش‌یافته)
+     * 
+     * @param WC_Order|int $order - شناسه یا object سفارش
+     */
+    public function on_product_sold($order) {
+        if (!Inventory_Sync_Settings::get_auto_sync_enabled()) {
+            return;
+        }
+        
+        if (is_int($order)) {
+            $order = wc_get_order($order);
+        }
+        
+        if (!$order) {
+            return;
+        }
+        
+        // برای هر محصول در سفارش، sync کن
+        foreach ($order->get_items() as $item) {
+            if ($item->is_type('line_item')) {
+                $product_id = $item->get_product_id();
+                if (!$product_id) {
+                    continue;
+                }
+                
+                $product = $item->get_product();
+                if ($product && method_exists($product, 'get_parent_id') && $product->get_parent_id()) {
+                    $product_id = $product->get_parent_id();
+                }
+                
+                global $wpdb;
+                $mapping = $wpdb->get_row(
+                    $wpdb->prepare(
+                        "SELECT id FROM {$wpdb->prefix}inventory_sync_mapping 
+                         WHERE (site1_product_id = %d OR site2_product_id = %d) 
+                         AND sync_enabled = 1 LIMIT 1",
+                        $product_id,
+                        $product_id
+                    )
+                );
+                
+                if ($mapping) {
+                    $this->sync_inventory($mapping->id);
+                }
+            }
+        }
+    }
+    
+    /**
+     * وقتی status سفارش تغییر کند
+     * 
+     * @param int $order_id - شناسه سفارش
+     * @param string $old_status - وضعیت قدیمی
+     * @param string $new_status - وضعیت جدید
+     */
+    public function on_order_status_change($order_id, $old_status, $new_status) {
+        if (!Inventory_Sync_Settings::get_auto_sync_enabled()) {
+            return;
+        }
+        
+        // اگر status به completed تغییر یافت، اطمینان‌حاصل کن موجودی sync شده است
+        if ($new_status === 'completed') {
+            $order = wc_get_order($order_id);
+            if ($order) {
+                $this->on_product_sold($order);
+            }
         }
     }
 }
