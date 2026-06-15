@@ -19,6 +19,16 @@
             $(document).on('click', '.test-btn', this.testConnection.bind(this));
             $(document).on('click', '.save-settings-btn', this.saveSettings.bind(this));
             
+            // Mapping Tab Events
+            $(document).on('click', '#mapping-search-btn', this.searchMappings.bind(this));
+            $(document).on('click', '#mapping-refresh-btn', this.loadMappings.bind(this));
+            $(document).on('click', '.mapping-sync-btn', this.syncMapping.bind(this));
+            $(document).on('click', '.mapping-toggle-btn', this.toggleMapping.bind(this));
+            $(document).on('click', '.mapping-delete-btn', this.deleteMapping.bind(this));
+            $(document).on('click', '#create-mapping-btn', this.createMapping.bind(this));
+            $(document).on('keyup', '#site1-search', this.searchProducts.bind(this, 'site1'));
+            $(document).on('keyup', '#site2-search', this.searchProducts.bind(this, 'site2'));
+            
             // Mapping
             $(document).on('click', '.sync-all-btn', this.syncAllInventory.bind(this));
             $(document).on('click', '.product-item', this.selectProduct.bind(this));
@@ -31,6 +41,7 @@
         },
         
         loadInitialData: function() {
+            this.loadMappings();
             this.loadProducts('site1');
             this.loadProducts('site2');
             this.loadTransferProducts();
@@ -435,7 +446,7 @@
         renderLogs: function(logs) {
             if (!logs || logs.length === 0) {
                 $('.logs-list').html(
-                    '<tr><td colspan="7" class="text-center">📭 هیچ لاگی موجود نیست</td></tr>'
+                    '<tr><td colspan="7" style="text-align: center; padding: 20px;">کوئی لاگ نہیں ہے</td></tr>'
                 );
                 return;
             }
@@ -444,12 +455,12 @@
             logs.forEach(log => {
                 const statusClass = log.status === 'success' ? 'success' : 
                                    (log.status === 'error' ? 'error' : 'pending');
-                const statusText = log.status === 'success' ? '✓ موفق' : 
-                                  (log.status === 'error' ? '✗ ناموفق' : '⏳ منتظر');
+                const statusText = log.status === 'success' ? '✓ کامیاب' : 
+                                  (log.status === 'error' ? '✗ ناکام' : '⏳ منتظر');
                 
                 html += `
                     <tr>
-                        <td>${new Date(log.created_at).toLocaleString('fa-IR')}</td>
+                        <td>${new Date(log.created_at).toLocaleString('ur-PK')}</td>
                         <td>${log.product_name || 'N/A'}</td>
                         <td>${log.action}</td>
                         <td>${log.source_site}</td>
@@ -461,6 +472,238 @@
             });
             
             $('.logs-list').html(html);
+        },
+        
+        // === Mapping Management ===
+        loadMappings: function(page = 1) {
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_get_mappings',
+                    nonce: inventorySyncData.nonce,
+                    page: page
+                },
+                success: (response) => {
+                    if (response.success) {
+                        this.renderMappings(response.data.mappings);
+                        this.renderMappingPagination(response.data.total_pages, page);
+                    }
+                },
+                error: () => {
+                    $('#mappings-list').html(
+                        '<tr><td colspan="7" style="text-align: center; color: red;">خرابی: Mappings لوڈ نہیں ہو سکے</td></tr>'
+                    );
+                }
+            });
+        },
+        
+        renderMappings: function(mappings) {
+            if (!mappings || mappings.length === 0) {
+                $('#mappings-list').html(
+                    '<tr><td colspan="7" style="text-align: center; padding: 20px;">کوئی mapping نہیں ہے۔ نیا بنائیں۔</td></tr>'
+                );
+                return;
+            }
+            
+            let html = '';
+            mappings.forEach(m => {
+                const statusIcon = m.sync_enabled ? '●' : '○';
+                const site1Name = m.site1_name || '<em>حذف شدہ</em>';
+                const site2Name = m.site2_name || '<em>حذف شدہ</em>';
+                
+                html += `
+                    <tr>
+                        <td style="text-align: center; font-size: 16px;">${statusIcon}</td>
+                        <td>
+                            <strong>${site1Name}</strong><br>
+                            <small style="color: #999;">SKU: ${m.site1_sku || 'N/A'}</small>
+                        </td>
+                        <td style="text-align: center; font-weight: bold;">${m.site1_stock}</td>
+                        <td style="text-align: center; font-size: 18px; color: #2271b1;">↔</td>
+                        <td>
+                            <strong>${site2Name}</strong><br>
+                            <small style="color: #999;">SKU: ${m.site2_sku || 'N/A'}</small>
+                        </td>
+                        <td style="text-align: center; font-weight: bold;">${m.site2_stock}</td>
+                        <td style="display: flex; gap: 5px; justify-content: flex-end;">
+                            <button class="button button-small mapping-sync-btn" data-id="${m.id}" title="ہماہنگ کریں">🔄</button>
+                            <button class="button button-small mapping-toggle-btn" data-id="${m.id}" data-enabled="${m.sync_enabled ? 1 : 0}" title="${m.sync_enabled ? 'غیر فعال' : 'فعال'} کریں">${m.sync_enabled ? '✅' : '⏹'}</button>
+                            <button class="button button-small mapping-delete-btn" data-id="${m.id}" style="color: #d32f2f;" title="حذف کریں">🗑️</button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            $('#mappings-list').html(html);
+        },
+        
+        renderMappingPagination: function(totalPages, currentPage) {
+            let html = '';
+            for (let i = 1; i <= totalPages; i++) {
+                const active = i === currentPage ? 'button-primary' : '';
+                html += `<button class="button ${active}" data-page="${i}">${i}</button> `;
+            }
+            $('#mapping-pagination').html(html);
+            
+            $(document).off('click', '#mapping-pagination button');
+            $(document).on('click', '#mapping-pagination button', (e) => {
+                this.loadMappings($(e.target).data('page'));
+            });
+        },
+        
+        searchMappings: function(e) {
+            e.preventDefault();
+            const search = $('#mapping-search').val();
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_get_mappings',
+                    nonce: inventorySyncData.nonce,
+                    search: search
+                },
+                success: (response) => {
+                    if (response.success) {
+                        this.renderMappings(response.data.mappings);
+                    }
+                }
+            });
+        },
+        
+        syncMapping: function(e) {
+            e.preventDefault();
+            const mappingId = $(e.target).data('id');
+            const $btn = $(e.target);
+            
+            $btn.prop('disabled', true).text('⏳');
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_sync_inventory',
+                    nonce: inventorySyncData.nonce,
+                    mapping_id: mappingId
+                },
+                success: (response) => {
+                    if (response.success) {
+                        this.loadMappings();
+                        alert('موجودی ہماہنگ ہو گئی!');
+                    }
+                },
+                complete: () => {
+                    $btn.prop('disabled', false).text('🔄');
+                }
+            });
+        },
+        
+        toggleMapping: function(e) {
+            e.preventDefault();
+            const mappingId = $(e.target).data('id');
+            const isEnabled = $(e.target).data('enabled');
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_toggle_mapping',
+                    nonce: inventorySyncData.nonce,
+                    mapping_id: mappingId,
+                    enabled: isEnabled ? 0 : 1
+                },
+                success: (response) => {
+                    if (response.success) {
+                        this.loadMappings();
+                    }
+                }
+            });
+        },
+        
+        deleteMapping: function(e) {
+            e.preventDefault();
+            if (!confirm('کیا آپ یقینی ہیں؟')) return;
+            
+            const mappingId = $(e.target).data('id');
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_delete_mapping',
+                    nonce: inventorySyncData.nonce,
+                    mapping_id: mappingId
+                },
+                success: (response) => {
+                    if (response.success) {
+                        this.loadMappings();
+                    }
+                }
+            });
+        },
+        
+        searchProducts: function(site, e) {
+            const search = $(e.target).val();
+            if (search.length < 2) return;
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_get_products',
+                    nonce: inventorySyncData.nonce,
+                    site: site,
+                    search: search
+                },
+                success: (response) => {
+                    if (response.success) {
+                        this.populateProductSelect(site, response.data);
+                    }
+                }
+            });
+        },
+        
+        populateProductSelect: function(site, products) {
+            const selector = site === 'site1' ? '#site1-product' : '#site2-product';
+            let options = '<option value="">انتخاب...</option>';
+            
+            products.forEach(product => {
+                options += `<option value="${product.id}">${product.name} (${product.sku})</option>`;
+            });
+            
+            $(selector).html(options);
+        },
+        
+        createMapping: function(e) {
+            e.preventDefault();
+            const site1Id = $('#site1-product').val();
+            const site2Id = $('#site2-product').val();
+            
+            if (!site1Id || !site2Id) {
+                alert('دونوں محصولات کو منتخب کریں');
+                return;
+            }
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_create_mapping',
+                    nonce: inventorySyncData.nonce,
+                    site1_product_id: site1Id,
+                    site2_product_id: site2Id
+                },
+                success: (response) => {
+                    if (response.success) {
+                        alert('Mapping بن گئی! موجودی ہماہنگ ہو رہی ہے...');
+                        this.loadMappings();
+                        $('#site1-product').val('');
+                        $('#site2-product').val('');
+                    } else {
+                        alert('خرابی: ' + response.data);
+                    }
+                }
+            });
         }
     };
     
