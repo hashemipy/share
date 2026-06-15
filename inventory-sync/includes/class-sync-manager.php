@@ -467,9 +467,36 @@ class Inventory_Sync_Manager {
         
         // آماده‌سازی داده‌ی هر متغیّر برای مقصد
         $variations_to_create = [];
-        foreach ($all_variations as $variation) {
+        foreach ($all_variations as $idx => $variation) {
             $variation_data = $this->prepare_variation_data($variation);
             $variations_to_create[] = $variation_data;
+            
+            // لاگ دیتیلی برای اولین متغیّر
+            if ($idx === 0) {
+                Inventory_Sync_Database::insert_log(
+                    $site1_product_id,
+                    $product_name,
+                    'variation_sample_data',
+                    'سایت 1',
+                    'سایت 2',
+                    json_encode($variation),
+                    $site2_parent_id,
+                    'info',
+                    'نمونه داده‌ی متغیّر اول از سایت 1'
+                );
+                
+                Inventory_Sync_Database::insert_log(
+                    $site1_product_id,
+                    $product_name,
+                    'variation_prepared_data',
+                    'سایت 1',
+                    'سایت 2',
+                    json_encode($variation_data),
+                    $site2_parent_id,
+                    'info',
+                    'نمونه داده‌ی متغیّر آماده‌شده برای ارسال'
+                );
+            }
         }
         
         Inventory_Sync_Database::insert_log(
@@ -521,21 +548,44 @@ class Inventory_Sync_Manager {
      * شامل: قیمت، موجودی، ویژگی‌ها و تصویر
      */
     private function prepare_variation_data($variation) {
-        // پایه‌ی داده‌های متغیّر
+        // گرفتن داده‌های اساسی
+        $sku = $variation['sku'] ?? '';
+        $regular_price = isset($variation['regular_price']) ? (float) $variation['regular_price'] : 0;
+        $sale_price = isset($variation['sale_price']) ? (float) $variation['sale_price'] : 0;
+        $manage_stock = $variation['manage_stock'] ?? false;
+        $stock_quantity = isset($variation['stock_quantity']) ? intval($variation['stock_quantity']) : 0;
+        $stock_status = $variation['stock_status'] ?? 'instock';
+        
+        // ساخت داده‌های متغیّر
         $data = [
-            'sku' => $variation['sku'] ?? '',
-            'regular_price' => isset($variation['regular_price']) ? (string) $variation['regular_price'] : '',
-            'sale_price' => isset($variation['sale_price']) ? (string) $variation['sale_price'] : '',
-            'description' => $variation['description'] ?? '',
-            'manage_stock' => $variation['manage_stock'] ?? false,
-            'stock_status' => $variation['stock_status'] ?? 'instock',
-            // ویژگی‌های متغیّر - بسیار مهم!
+            'sku' => strval($sku),
             'attributes' => $this->prepare_variation_attributes($variation['attributes'] ?? []),
         ];
         
-        // موجودی
-        if (!empty($data['manage_stock'])) {
-            $data['stock_quantity'] = isset($variation['stock_quantity']) ? intval($variation['stock_quantity']) : 0;
+        // قیمت (ضروری)
+        if ($regular_price > 0) {
+            $data['regular_price'] = strval($regular_price);
+        }
+        
+        // قیمت تخفیف (اختیاری)
+        if ($sale_price > 0 && $sale_price < $regular_price) {
+            $data['sale_price'] = strval($sale_price);
+        }
+        
+        // موجودی و وضعیت
+        $data['stock_status'] = $stock_status;
+        
+        // اگر مدیریت موجودی فعال است
+        if ($manage_stock) {
+            $data['manage_stock'] = true;
+            $data['stock_quantity'] = $stock_quantity;
+        } else {
+            $data['manage_stock'] = false;
+        }
+        
+        // توضیح (اختیاری)
+        if (!empty($variation['description'])) {
+            $data['description'] = $variation['description'];
         }
         
         // تصویر متغیّر (اگر موجود بود)
@@ -554,38 +604,67 @@ class Inventory_Sync_Manager {
      * آماده‌سازی ویژگی‌های یک متغیّر برای انتقال
      * 
      * WooCommerce API نیاز دارد:
-     * - برای ویژگی عمومی: {'id': X} یا {'name': 'رنگ'}
-     * - برای ویژگی متغیّر: {'option': 'سبز'} (نام تکیه)
+     * - 'id': شناسه ویژگی عمومی در سایت مقصد (mapping شده)
+     * - 'option': نام مقدار ویژگی (مثلاً 'سبز', 'لارج')
      */
     private function prepare_variation_attributes($attributes) {
         if (empty($attributes) || !is_array($attributes)) {
             return [];
         }
         
+        global $wpdb;
+        $category_attr_sync = new Inventory_Sync_Category_Attribute_Sync(
+            $this->site1_api,
+            $this->site2_api
+        );
+        
         $clean = [];
         foreach ($attributes as $attr) {
-            if (empty($attr['name']) && empty($attr['id'])) {
+            $site1_attr_id = intval($attr['id'] ?? 0);
+            $attr_name = $attr['name'] ?? '';
+            $attr_option = $attr['option'] ?? '';
+            
+            // اگر نام و مقدار خالی است، پاس کن
+            if (empty($attr_name) && empty($attr_option)) {
                 continue;
             }
             
-            $attr_item = [];
+            $site2_attr_id = null;
             
-            // اگر ID موجود است (ویژگی عمومی)
-            if (!empty($attr['id']) && $attr['id'] !== 0) {
-                $attr_item['id'] = intval($attr['id']);
-            } elseif (!empty($attr['name'])) {
-                // اگر ID نیست، از name استفاده کن
-                $attr_item['name'] = $attr['name'];
+            // اگر ID موجود است، mapping کنی ببین
+            if ($site1_attr_id > 0) {
+                $mapping = Inventory_Sync_Database::get_attribute_mapping($site1_attr_id);
+                if ($mapping && !empty($mapping->site2_attribute_id)) {
+                    $site2_attr_id = intval($mapping->site2_attribute_id);
+                }
             }
             
-            // تکیه (option) - نام مقدار ویژگی
-            if (!empty($attr['option'])) {
-                $attr_item['option'] = $attr['option'];
+            // اگر mapping پیدا نشد، بر اساس نام ویژگی جستجو کن
+            if ($site2_attr_id === null && !empty($attr_name)) {
+                // از سایت 2 تمام ویژگی‌ها دریافت کن و نام را مقایسه کن
+                $site2_attributes = $this->site2_api->get_attributes();
+                if (!is_wp_error($site2_attributes) && is_array($site2_attributes)) {
+                    foreach ($site2_attributes as $site2_attr) {
+                        if (strtolower($site2_attr['name'] ?? '') === strtolower($attr_name)) {
+                            $site2_attr_id = intval($site2_attr['id']);
+                            break;
+                        }
+                    }
+                }
             }
             
-            if (!empty($attr_item)) {
-                $clean[] = $attr_item;
+            // اگر هنوز ID پیدا نشده، از نام استفاده کن
+            if ($site2_attr_id === null) {
+                $site2_attr_id = $site1_attr_id; // آخرین تلاش: همان ID
             }
+            
+            // ساختار ویژگی متغیّر
+            $attr_item = [
+                'id' => intval($site2_attr_id),
+                'option' => $attr_option
+            ];
+            
+            $clean[] = $attr_item;
         }
         
         return $clean;
