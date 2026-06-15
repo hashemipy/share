@@ -50,8 +50,6 @@
             const $tab = $(e.target);
             const tabName = $tab.attr('data-tab');
             
-            console.log('[v0] Tab میں داخل:', tabName);
-            
             // Update active tab
             $('.nav-tab').removeClass('nav-tab-active');
             $tab.addClass('nav-tab-active');
@@ -62,7 +60,6 @@
             
             // Load data based on tab
             if (tabName === 'mapping') {
-                console.log('[v0] Mapping tab - محصولات لوڈ کریں');
                 this.loadProductSelects();
                 this.loadMappings();
             } else if (tabName === 'logs') {
@@ -477,7 +474,6 @@
         
         // === Mapping Management ===
         loadProductSelects: function() {
-            console.log('[v0] شروع loadProductSelects');
             $.ajax({
                 url: inventorySyncData.ajaxurl,
                 type: 'POST',
@@ -486,43 +482,27 @@
                     nonce: inventorySyncData.nonce
                 },
                 success: (response) => {
-                    console.log('[v0] محصولات کا جواب:', response);
                     if (response.success && response.data) {
                         const site1 = response.data.site1 || [];
                         const site2 = response.data.site2 || [];
-                        console.log('[v0] سائٹ 1:', site1.length, 'محصولات');
-                        console.log('[v0] سائٹ 2:', site2.length, 'محصولات');
                         
                         this.populateSelect('#site1-product-select', site1);
                         this.populateSelect('#site2-product-select', site2);
-                    } else {
-                        console.log('[v0] خرابی:', response);
                     }
-                },
-                error: (xhr, status, error) => {
-                    console.log('[v0] AJAX خرابی:', error, xhr);
                 }
             });
         },
         
         populateSelect: function(selector, products) {
-            console.log('[v0] populateSelect:', selector, 'میں', products.length, 'محصولات');
             if (!products || !Array.isArray(products)) {
-                console.log('[v0] خرابی: products array نہیں ہے', products);
                 products = [];
             }
             
             let html = '<option value="">انتخاب کنید...</option>';
-            if (products.length === 0) {
-                console.log('[v0] کوئی محصول نہیں');
-            }
-            
             products.forEach(p => {
-                console.log('[v0] محصول شامل:', p.name, 'ID:', p.id);
                 html += `<option value="${p.id}" data-sku="${p.sku || 'N/A'}">${p.name}</option>`;
             });
             $(selector).html(html);
-            console.log('[v0]', selector, 'میں', products.length, 'options شامل کیے');
         },
         
         updateSite1ProductInfo: function(e) {
