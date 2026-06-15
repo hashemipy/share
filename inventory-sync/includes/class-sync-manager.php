@@ -41,129 +41,31 @@ class Inventory_Sync_Manager {
     
     /**
      * شنیدن تغییرات موجودی و فروش‌ها
-     * ⭐ تمام hooks یہاں ہیں - بغیر Cron کے فوری
      */
     private function init_hooks() {
-        // محصول ساده
-        add_action('woocommerce_product_set_stock', [$this, 'sync_on_stock_change'], 10, 1);
-        
-        // واریاسیون - یہ صحیح hook ہے
-        add_action('woocommerce_update_product_variation', [$this, 'sync_on_variation_update'], 10, 2);
-        
-        // محصول محفوظ/ترمیم
-        add_action('woocommerce_update_product', [$this, 'sync_on_product_update'], 20, 1);
-        
-        // سفارش مکمل
+        // وقتی سفارش کامل شود، موجودی را sync کن
         add_action('woocommerce_order_status_completed', [$this, 'sync_on_order'], 10, 1);
         
-        // موجودی کم کریں (خریدیں)
-        add_action('woocommerce_reduce_order_stock', [$this, 'sync_on_order'], 10, 1);
+        // وقتی موجودی دستی تغییر کند (محصول ساده)
+        add_action('woocommerce_product_set_stock', [$this, 'sync_on_stock_change'], 10, 1);
+        // وقتی موجودی یک واریاسیون تغییر کند
+        add_action('woocommerce_variation_set_stock', [$this, 'sync_on_stock_change'], 10, 1);
+        // وقتی محصول ذخیره/ویرایش شود (پوشش تغییرات دستی موجودی در ادمین)
+        add_action('woocommerce_update_product', [$this, 'sync_on_product_update'], 20, 1);
         
-        // موجودی بحال کریں
-        add_action('woocommerce_restore_order_stock', [$this, 'sync_on_order'], 10, 1);
+        // *** بسیار مهم: handler رویدادهای زمان‌بندی‌شده ***
+        // بدون این‌ها، sync خودکار هرگز اجرا نمی‌شد
+        add_action('inventory_sync_mapping', [$this, 'sync_inventory'], 10, 1);
+        add_action('inventory_sync_immediate', [$this, 'sync_all_mappings'], 10, 0);
     }
     
     /**
-     * هنگام بروزرسانی/ذخیره محصول، اگر در mapping باشد sync کن (فوری)
+     * هنگام بروزرسانی/ذخیره محصول، اگر در mapping باشد sync کن
      */
     public function sync_on_product_update($product_id) {
         if (!Inventory_Sync_Settings::get_auto_sync_enabled()) {
             return;
         }
-        
-        $this->sync_mapped_product($product_id);
-    }
-    
-    /**
-     * هنگام تغییر موجودی محصول ساده (فوری)
-     */
-    public function sync_on_stock_change($product) {
-        if (!Inventory_Sync_Settings::get_auto_sync_enabled()) {
-            return;
-        }
-        
-        if (!is_object($product) || !method_exists($product, 'get_id')) {
-            return;
-        }
-        
-        $product_id = $product->get_id();
-        if (method_exists($product, 'get_parent_id') && $product->get_parent_id()) {
-            $product_id = $product->get_parent_id();
-        }
-        
-        $this->sync_mapped_product($product_id);
-    }
-    
-    /**
-     * هنگام تغییر واریاسیون (فوری)
-     */
-    public function sync_on_variation_update($variation_id, $variation = null) {
-        if (!Inventory_Sync_Settings::get_auto_sync_enabled()) {
-            return;
-        }
-        
-        if (!$variation) {
-            $variation = wc_get_product($variation_id);
-        }
-        
-        if (!$variation || !method_exists($variation, 'get_parent_id')) {
-            return;
-        }
-        
-        $product_id = $variation->get_parent_id();
-        if ($product_id) {
-            $this->sync_mapped_product($product_id);
-        }
-    }
-    
-    /**
-     * ایک محصول mapped کو sync کریں (فوری)
-     */
-    private function sync_mapped_product($product_id) {
-        global $wpdb;
-        $mapping = $wpdb->get_row(
-            $wpdb->prepare(
-                "SELECT id FROM {$wpdb->prefix}inventory_sync_mapping 
-                 WHERE (site1_product_id = %d OR site2_product_id = %d) 
-                 AND sync_enabled = 1 LIMIT 1",
-                $product_id,
-                $product_id
-            )
-        );
-        
-        if ($mapping) {
-            // فوری - بغیر تاخیر کے
-            $this->sync_inventory($mapping->id);
-        }
-    }
-    
-    /**
-     * سفارش کے موجودی کو sync کریں (فوری)
-     */
-    public function sync_on_order($order_id) {
-        if (!Inventory_Sync_Settings::get_auto_sync_enabled()) {
-            return;
-        }
-        
-        $order = wc_get_order($order_id);
-        if (!$order) {
-            return;
-        }
-        
-        // تمام items میں mapped محصولات تلاش کریں
-        foreach ($order->get_items() as $item) {
-            if ($item->is_type('line_item')) {
-                $product_id = $item->get_product_id();
-                if ($product_id) {
-                    $product = wc_get_product($product_id);
-                    if ($product && method_exists($product, 'get_parent_id') && $product->get_parent_id()) {
-                        $product_id = $product->get_parent_id();
-                    }
-                    $this->sync_mapped_product($product_id);
-                }
-            }
-        }
-    }
         
         global $wpdb;
         $mapping = $wpdb->get_row(

@@ -27,7 +27,7 @@ class Inventory_Sync_API {
     /**
      * دریافت محصولات
      */
-    public function get_products($per_page = 100, $page = 1, $search = '') {
+    public function get_products($per_page = 100, $page = 1) {
         $endpoint = '/wp-json/wc/v3/products';
         $params = [
             'per_page' => $per_page,
@@ -35,11 +35,6 @@ class Inventory_Sync_API {
             'orderby' => 'id',
             'order' => 'desc'
         ];
-        
-        // search اگر ہے تو شامل کریں
-        if (!empty($search)) {
-            $params['search'] = $search;
-        }
         
         return $this->request('GET', $endpoint, [], $params);
     }
