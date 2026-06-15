@@ -11,6 +11,7 @@ class Inventory_Sync_Database {
         $table3 = $wpdb->prefix . 'inventory_sync_category_mapping';
         $table4 = $wpdb->prefix . 'inventory_sync_attribute_mapping';
         $table5 = $wpdb->prefix . 'inventory_sync_products_transferred';
+        $table6 = $wpdb->prefix . 'inventory_sync_variation_mapping';
         
         $sql1 = "CREATE TABLE IF NOT EXISTS $table1 (
             id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -91,12 +92,32 @@ class Inventory_Sync_Database {
             INDEX idx_status (transfer_status)
         ) $charset_collate;";
         
+        $sql6 = "CREATE TABLE IF NOT EXISTS $table6 (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            product_mapping_id BIGINT(20) UNSIGNED NOT NULL,
+            site1_variation_id BIGINT(20) UNSIGNED NOT NULL,
+            site2_variation_id BIGINT(20) UNSIGNED NOT NULL,
+            site1_sku VARCHAR(255),
+            site2_sku VARCHAR(255),
+            sync_enabled BOOLEAN DEFAULT 1,
+            last_sync DATETIME,
+            sync_status ENUM('pending', 'synced', 'error') DEFAULT 'synced',
+            error_message LONGTEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY unique_variation_mapping (site1_variation_id, site2_variation_id),
+            KEY idx_product_mapping (product_mapping_id),
+            KEY idx_status (sync_status),
+            KEY idx_sku (site1_sku, site2_sku)
+        ) $charset_collate;";
+        
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         dbDelta($sql1);
         dbDelta($sql2);
         dbDelta($sql3);
         dbDelta($sql4);
         dbDelta($sql5);
+        dbDelta($sql6);
     }
     
     public static function insert_log($product_id, $product_name, $action, $source_site, $target_site, $old_value, $new_value, $status, $error = '') {
@@ -251,5 +272,62 @@ class Inventory_Sync_Database {
         );
         
         return !empty($result);
+    }
+    
+    // ✅ Variation Mapping - برای ردیابی دقیق متغیرها بین دو سایت
+    public static function add_variation_mapping($product_mapping_id, $site1_var_id, $site2_var_id, $site1_sku, $site2_sku) {
+        global $wpdb;
+        
+        return $wpdb->insert(
+            $wpdb->prefix . 'inventory_sync_variation_mapping',
+            [
+                'product_mapping_id' => $product_mapping_id,
+                'site1_variation_id' => $site1_var_id,
+                'site2_variation_id' => $site2_var_id,
+                'site1_sku' => $site1_sku,
+                'site2_sku' => $site2_sku,
+                'sync_enabled' => 1,
+                'sync_status' => 'synced'
+            ],
+            ['%d', '%d', '%d', '%s', '%s', '%d', '%s']
+        );
+    }
+    
+    public static function get_variation_mapping($site1_var_id) {
+        global $wpdb;
+        
+        return $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}inventory_sync_variation_mapping WHERE site1_variation_id = %d",
+                $site1_var_id
+            )
+        );
+    }
+    
+    public static function get_variation_mapping_by_sku($site1_sku) {
+        global $wpdb;
+        
+        return $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}inventory_sync_variation_mapping WHERE site1_sku = %s",
+                $site1_sku
+            )
+        );
+    }
+    
+    public static function update_variation_sync_status($site1_var_id, $status, $error = '') {
+        global $wpdb;
+        
+        return $wpdb->update(
+            $wpdb->prefix . 'inventory_sync_variation_mapping',
+            [
+                'sync_status' => $status,
+                'error_message' => $error,
+                'last_sync' => current_time('mysql')
+            ],
+            ['site1_variation_id' => $site1_var_id],
+            ['%s', '%s', '%s'],
+            ['%d']
+        );
     }
 }

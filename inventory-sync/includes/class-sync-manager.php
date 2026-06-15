@@ -302,7 +302,9 @@ class Inventory_Sync_Manager {
     }
     
     /**
-     * هماهنگ‌سازی موجودی محصول متغیّر بر اساس تطابق SKU واریاسیون‌ها
+     * هماهنگ‌سازی موجودی محصول متغیّر بر اساس Mapping Database یا SKU
+     * 
+     * ✅ ابتدا از جدول mapping جستجو می‌کنیم (دقیق‌تر)، سپس بر اساس SKU (fallback)
      */
     private function sync_variable_stock($from_api, $to_api, $from_id, $to_id, $from_name, $to_name, $product_name) {
         $from_variations = $this->fetch_all_variations($from_api, $from_id);
@@ -323,26 +325,63 @@ class Inventory_Sync_Manager {
             return;
         }
         
-        // ایندکس واریاسیون‌های مقصد بر اساس SKU
+        // ایندکس واریاسیون‌های مقصد بر اساس SKU و ID
         $to_by_sku = [];
+        $to_by_id = [];
         foreach ($to_variations as $v) {
             if (!empty($v['sku'])) {
-                $to_by_sku[$v['sku']] = $v['id'];
+                $to_by_sku[$v['sku']] = $v;
             }
+            $to_by_id[$v['id']] = $v;
         }
         
         $synced = 0;
+        $failed = 0;
+        
         foreach ($from_variations as $v) {
+            $from_var_id = intval($v['id'] ?? 0);
             $sku = $v['sku'] ?? '';
-            if ($sku === '' || !isset($to_by_sku[$sku])) {
-                continue;
+            $stock = isset($v['stock_quantity']) ? intval($v['stock_quantity']) : 0;
+            
+            // ۱. جستجو در جدول Variation Mapping (دقیق‌ترین روش)
+            $var_mapping = Inventory_Sync_Database::get_variation_mapping($from_var_id);
+            
+            if ($var_mapping && !empty($var_mapping->site2_variation_id)) {
+                // پیدا شد! از Mapping استفاده کن
+                $to_var_id = intval($var_mapping->site2_variation_id);
+                if (isset($to_by_id[$to_var_id])) {
+                    $result = $to_api->update_variation_stock($to_id, $to_var_id, $stock);
+                    if (!is_wp_error($result)) {
+                        $synced++;
+                    } else {
+                        $failed++;
+                        Inventory_Sync_Database::update_variation_sync_status($from_var_id, 'error', $result->get_error_message());
+                    }
+                    continue;
+                }
             }
             
-            $stock = isset($v['stock_quantity']) ? intval($v['stock_quantity']) : 0;
-            $result = $to_api->update_variation_stock($to_id, $to_by_sku[$sku], $stock);
-            
-            if (!is_wp_error($result)) {
-                $synced++;
+            // ۲. Fallback: جستجو بر اساس SKU
+            if (!empty($sku) && isset($to_by_sku[$sku])) {
+                $to_var = $to_by_sku[$sku];
+                $result = $to_api->update_variation_stock($to_id, $to_var['id'], $stock);
+                
+                if (!is_wp_error($result)) {
+                    $synced++;
+                    // و حالا جدول Mapping را به‌روز کن اگر تازه‌ای نبود
+                    if (!$var_mapping) {
+                        Inventory_Sync_Database::add_variation_mapping(
+                            0, // product_mapping_id را به‌صورت صفر بگذار (این متغیرها منتقل نشده بودند)
+                            $from_var_id,
+                            $to_var['id'],
+                            $sku,
+                            $sku
+                        );
+                    }
+                } else {
+                    $failed++;
+                    Inventory_Sync_Database::update_variation_sync_status($from_var_id, 'error', $result->get_error_message());
+                }
             }
         }
         
@@ -355,7 +394,7 @@ class Inventory_Sync_Manager {
             '',
             $to_id,
             'success',
-            "موجودی {$synced} واریاسیون هماهنگ شد"
+            "موجودی {$synced} واریاسیون هماهنگ شد" . ($failed > 0 ? " ({$failed} ناموفق)" : "")
         );
     }
     
@@ -443,7 +482,7 @@ class Inventory_Sync_Manager {
             $product1['attributes'] ?? []
         );
         
-        // ۳. آماده‌سازی داده‌های محصول برای سایت 2
+        // ۳. آماده��سازی داده‌های محصول برای سایت 2
         $product_data = $this->prepare_transfer_data($product1);
         
         // اپدیت دسته‌بندی‌های محصول با mapping جدید
@@ -510,6 +549,7 @@ class Inventory_Sync_Manager {
         $site2_product_id = $result['id'];
         
         // ۵. اگر محصول متغیّر است، متغیّرها را منتقل کن
+        $variation_result = null;
         if (($product1['type'] ?? 'simple') === 'variable') {
             $variation_result = $this->transfer_variations($site1_product_id, $site2_product_id, $product_name);
             if (is_wp_error($variation_result)) {
@@ -528,12 +568,21 @@ class Inventory_Sync_Manager {
         }
         
         // ۶. ذخیره mapping
-        $this->save_mapping(
+        $product_mapping_id = $this->save_mapping(
             $site1_product_id,
             $site2_product_id,
             $product1['sku'] ?? '',
             $result['sku'] ?? ''
         );
+        
+        // ۶.۵ اگر متغیّرها موفقیت‌آمیز منتقل شدند، mapping آنها را ذخیره کن
+        if ($variation_result !== null && !is_wp_error($variation_result) && !empty($variation_result)) {
+            // دریافت متغیرهای سایت ۱ دوباره برای ذخیره mapping
+            $site1_variations = $this->fetch_all_variations($this->site1_api, $site1_product_id);
+            if (!empty($site1_variations)) {
+                $this->save_variation_mappings($product_mapping_id, $site1_product_id, $site2_product_id, $site1_variations, $variation_result);
+            }
+        }
         
         // ۷. ثبت محصول منتقل‌شده
         Inventory_Sync_Database::add_transferred_product(
@@ -610,10 +659,31 @@ class Inventory_Sync_Manager {
             return true;
         }
         
+        // ✅ جدید: Mapping ویژگی‌های سایت ۱ به سایت ۲
+        // اولاً، تمام ویژگی‌های محصول والد را دریافت کنیم
+        $site1_product = $this->site1_api->get_product($site1_product_id);
+        if (is_wp_error($site1_product)) {
+            return $site1_product;
+        }
+        
+        // ایجاد mapping بین ویژگی‌های سایت ۱ و ۲
+        $attribute_mapping = [];
+        foreach (($site1_product['attributes'] ?? []) as $attr) {
+            $site1_attr_id = intval($attr['id'] ?? 0);
+            $attr_name = $attr['name'] ?? '';
+            
+            // تعیین هویت ویژگی در سایت ۲
+            $site2_attr = $this->resolve_attribute_identity($site1_attr_id, $attr_name);
+            
+            // مقدار کلید را برای mapping استفاده کنیم
+            $key = !empty($attr_name) ? strtolower($attr_name) : ('id_' . $site1_attr_id);
+            $attribute_mapping[$key] = $site2_attr;
+        }
+        
         // آماده‌سازی داده‌ی هر متغیّر برای مقصد
         $variations_to_create = [];
         foreach ($all_variations as $idx => $variation) {
-            $variation_data = $this->prepare_variation_data($variation);
+            $variation_data = $this->prepare_variation_data($variation, $attribute_mapping);
             $variations_to_create[] = $variation_data;
             
             // لاگ دیتیلی برای اولین متغیّر
@@ -691,8 +761,11 @@ class Inventory_Sync_Manager {
     /**
      * آماده‌سازی داده‌ی یک متغیّر برای انتقال به سایت مقصد
      * شامل: قیمت، موجودی، ویژگی‌ها و تصویر
+     * 
+     * @param array $variation داده‌های متغیر
+     * @param array $attribute_mapping mapping ویژگی‌های سایت ۱ به ۲
      */
-    private function prepare_variation_data($variation) {
+    private function prepare_variation_data($variation, $attribute_mapping = []) {
         // گرفتن داده‌های اساسی
         $sku = $variation['sku'] ?? '';
         $regular_price = isset($variation['regular_price']) ? (float) $variation['regular_price'] : 0;
@@ -704,7 +777,7 @@ class Inventory_Sync_Manager {
         // ساخت داده‌های متغیّر
         $data = [
             'sku' => strval($sku),
-            'attributes' => $this->prepare_variation_attributes($variation['attributes'] ?? []),
+            'attributes' => $this->prepare_variation_attributes($variation['attributes'] ?? [], $attribute_mapping),
         ];
         
         // قیمت (ضروری)
@@ -751,8 +824,11 @@ class Inventory_Sync_Manager {
      * WooCommerce API نیاز دارد:
      * - 'id': شناسه ویژگی عمومی در سایت مقصد (mapping شده)
      * - 'option': نام مقدار ویژگی (مثلاً 'سبز', 'لارج')
+     * 
+     * @param array $attributes ویژگی‌های متغیر
+     * @param array $attribute_mapping mapping ویژگی‌های سایت ۱ به ۲
      */
-    private function prepare_variation_attributes($attributes) {
+    private function prepare_variation_attributes($attributes, $attribute_mapping = []) {
         if (empty($attributes) || !is_array($attributes)) {
             return [];
         }
@@ -768,11 +844,16 @@ class Inventory_Sync_Manager {
                 continue;
             }
             
-            // از همان resolver والد استفاده می‌کنیم تا هویت ویژگی دقیقاً یکی باشد
-            // (در غیر این صورت ووکامرس واریاسیون را به والد متصل نمی‌کند)
-            $item = $this->resolve_attribute_identity($site1_attr_id, $attr_name);
-            $item['option'] = $attr_option;
+            // اولاً، از mapping جستجو کنیم
+            $key = !empty($attr_name) ? strtolower($attr_name) : ('id_' . $site1_attr_id);
+            if (isset($attribute_mapping[$key])) {
+                $item = $attribute_mapping[$key];
+            } else {
+                // اگر در mapping نبود، از resolver استفاده کنیم (fallback)
+                $item = $this->resolve_attribute_identity($site1_attr_id, $attr_name);
+            }
             
+            $item['option'] = $attr_option;
             $clean[] = $item;
         }
         
@@ -967,5 +1048,39 @@ class Inventory_Sync_Manager {
                 'sync_status' => 'synced'
             ]
         );
+        
+        // بازگرداندن ID mapping برای استفاده در variation mapping
+        return $wpdb->insert_id;
+    }
+    
+    /**
+     * ذخیره نقشه‌برداری متغیر‌های محصول
+     * ✅ مهم: این اطلاعات برای هماهنگ‌سازی دقیق موجودی استفاده می‌شود
+     */
+    private function save_variation_mappings($product_mapping_id, $site1_product_id, $site2_parent_id, $all_variations, $created_variations) {
+        // ایندکس کردن متغیرهای سایت ۲ بر اساس SKU
+        $site2_by_sku = [];
+        foreach ($created_variations as $var) {
+            if (!empty($var['sku'])) {
+                $site2_by_sku[$var['sku']] = $var;
+            }
+        }
+        
+        // ذخیره mapping برای هر متغیر
+        foreach ($all_variations as $var1) {
+            $sku = $var1['sku'] ?? '';
+            if ($sku === '' || !isset($site2_by_sku[$sku])) {
+                continue;
+            }
+            
+            $var2 = $site2_by_sku[$sku];
+            Inventory_Sync_Database::add_variation_mapping(
+                $product_mapping_id,
+                $var1['id'],
+                $var2['id'],
+                $sku,
+                $sku
+            );
+        }
     }
 }

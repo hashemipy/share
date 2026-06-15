@@ -184,29 +184,46 @@ if (!defined('ABSPATH')) exit;
         <div id="mapping" class="tab-pane">
             <h2><?php esc_html_e('مرتبط‌سازی محصولات', 'inventory-sync'); ?></h2>
             <p class="description">
-                <?php esc_html_e('محصولات سایت 1 و 2 را در کنار هم ببینید و آنها را مرتبط کنید', 'inventory-sync'); ?>
+                <?php esc_html_e('محصولات سایت 1 و 2 را مشاهده کنید. محصولات متصل شده با ✓ مشخص می‌شوند', 'inventory-sync'); ?>
             </p>
             
-            <div class="mapping-container">
-                <div class="mapping-column">
-                    <h3><?php esc_html_e('سایت 1 - محصولات', 'inventory-sync'); ?></h3>
-                    <div class="products-list site1-products">
-                        <p><?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?></p>
-                    </div>
-                </div>
-                
-                <div class="mapping-column">
-                    <h3><?php esc_html_e('سایت 2 - محصولات', 'inventory-sync'); ?></h3>
-                    <div class="products-list site2-products">
-                        <p><?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?></p>
-                    </div>
-                </div>
+            <div class="mapping-info-box" style="background: #e8f5e9; border-left: 4px solid #4caf50; padding: 15px; margin-bottom: 20px; border-radius: 4px;">
+                <p><strong>💡 نکات مهم:</strong></p>
+                <ul style="margin-top: 10px; margin-bottom: 0;">
+                    <li>محصولات بر اساس <strong>SKU</strong> و <strong>ID داخلی</strong> مرتبط می‌شوند</li>
+                    <li>متغیرهای محصول نیز خودکار پیگیری می‌شوند (جدول warehouse_inventory_sync_variation_mapping)</li>
+                    <li>وقتی محصول یا متغیر منتقل شود، ID آن‌ها به‌طور خودکار ذخیره می‌شود</li>
+                </ul>
             </div>
+            
+            <h3><?php esc_html_e('📋 محصولات مرتبط شده:', 'inventory-sync'); ?></h3>
+            <table class="widefat striped">
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e('وضعیت', 'inventory-sync'); ?></th>
+                        <th><?php esc_html_e('سایت 1 - نام / ID', 'inventory-sync'); ?></th>
+                        <th><?php esc_html_e('سایت 2 - نام / ID', 'inventory-sync'); ?></th>
+                        <th><?php esc_html_e('SKU', 'inventory-sync'); ?></th>
+                        <th><?php esc_html_e('آخرین هماهنگ‌سازی', 'inventory-sync'); ?></th>
+                        <th><?php esc_html_e('عملیات', 'inventory-sync'); ?></th>
+                    </tr>
+                </thead>
+                <tbody class="mapping-list">
+                    <tr>
+                        <td colspan="6" class="text-center">
+                            <?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
             
             <div class="mapping-actions">
                 <button class="button button-primary sync-all-btn">
-                    <?php esc_html_e('⚡ هماهنگ‌سازی همه موجودی‌ها', 'inventory-sync'); ?>
+                    <?php esc_html_e('⚡ هماهنگ‌سازی دستی - همه موجودی‌ها', 'inventory-sync'); ?>
                 </button>
+                <p class="description" style="margin-top: 10px;">
+                    <?php esc_html_e('این دکمه موجودی‌های تمام محصولات مرتبط شده را به‌طور دستی هماهنگ می‌کند (خودکار نیز فعال است)', 'inventory-sync'); ?>
+                </p>
             </div>
         </div>
         

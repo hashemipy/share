@@ -33,6 +33,7 @@
         loadInitialData: function() {
             this.loadProducts('site1');
             this.loadProducts('site2');
+            this.loadMappings();
             this.loadTransferProducts();
             this.loadTransferredProducts();
             this.loadLogs();
@@ -197,6 +198,67 @@
             $(e.target).closest('.product-item').toggleClass('selected');
         },
         
+        // === Mappings Management ===
+        loadMappings: function() {
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_get_mappings',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    page: 1
+                },
+                success: (response) => {
+                    if (response.success) {
+                        this.renderMappings(response.data);
+                    }
+                },
+                error: () => {
+                    $('.mapping-list').html(
+                        '<tr><td colspan="6" class="text-center alert alert-error">' + 
+                        inventorySyncData.i18n.error + '</td></tr>'
+                    );
+                }
+            });
+        },
+        
+        renderMappings: function(mappings) {
+            if (!mappings || mappings.length === 0) {
+                $('.mapping-list').html(
+                    '<tr><td colspan="6" class="text-center">📭 هیچ مرتبطی ایجاد نشده است</td></tr>'
+                );
+                return;
+            }
+            
+            let html = '';
+            mappings.forEach(mapping => {
+                const lastSync = mapping.last_sync ? new Date(mapping.last_sync).toLocaleString('fa-IR') : 'هرگز';
+                const statusBadge = mapping.sync_enabled ? '✓ فعال' : '✕ غیرفعال';
+                const statusClass = mapping.sync_enabled ? 'success' : 'warning';
+                const syncStatusText = mapping.sync_status === 'synced' ? '✓ هماهنگ شده' : '⏳ منتظر';
+                
+                html += `
+                    <tr>
+                        <td><span class="status-badge ${statusClass}">${statusBadge}</span></td>
+                        <td><strong>${mapping.site1_product_name || '-'}</strong><br><small>#${mapping.site1_product_id}</small></td>
+                        <td><strong>${mapping.site2_product_name || '-'}</strong><br><small>#${mapping.site2_product_id}</small></td>
+                        <td>
+                            <small>سایت ۱: ${mapping.site1_sku || 'بدون'}</small><br>
+                            <small>سایت ۲: ${mapping.site2_sku || 'بدون'}</small>
+                        </td>
+                        <td><small>${lastSync}</small><br><span class="status-badge">${syncStatusText}</span></td>
+                        <td>
+                            <a href="javascript:void(0)" class="sync-single-mapping" data-mapping-id="${mapping.id}">
+                                🔄 هماهنگ کن
+                            </a>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            $('.mapping-list').html(html);
+        },
+        
         // === Inventory Sync ===
         syncAllInventory: function(e) {
             e.preventDefault();
@@ -208,15 +270,30 @@
             const $btn = $(e.target);
             const originalText = $btn.text();
             
-            $btn.attr('disabled', true).text(inventorySyncData.i18n.syncing);
+            $btn.attr('disabled', true).text(inventorySyncData.i18n.loading);
             
-            // Here you would fetch all mappings and sync them
-            // For now, just show a message
-            
-            setTimeout(() => {
-                alert('✓ هماهنگ‌سازی کامل شد!');
-                $btn.attr('disabled', false).text(originalText);
-            }, 1000);
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_sync_all',
+                    _ajax_nonce: inventorySyncData.nonce
+                },
+                success: (response) => {
+                    if (response.success) {
+                        alert('✓ ' + response.data);
+                        this.loadMappings();
+                    } else {
+                        alert('✗ ' + response.data);
+                    }
+                },
+                error: () => {
+                    alert('✗ ' + inventorySyncData.i18n.error);
+                },
+                complete: () => {
+                    $btn.attr('disabled', false).text(originalText);
+                }
+            });
         },
         
         // === Transfer Management ===
