@@ -50,6 +50,8 @@
             const $tab = $(e.target);
             const tabName = $tab.attr('data-tab');
             
+            console.log('[v0] Tab میں داخل:', tabName);
+            
             // Update active tab
             $('.nav-tab').removeClass('nav-tab-active');
             $tab.addClass('nav-tab-active');
@@ -58,8 +60,12 @@
             $('.tab-pane').removeClass('active');
             $('#' + tabName).addClass('active');
             
-            // Load data if needed
-            if (tabName === 'logs') {
+            // Load data based on tab
+            if (tabName === 'mapping') {
+                console.log('[v0] Mapping tab - محصولات لوڈ کریں');
+                this.loadProductSelects();
+                this.loadMappings();
+            } else if (tabName === 'logs') {
                 this.loadLogs();
             }
         },
