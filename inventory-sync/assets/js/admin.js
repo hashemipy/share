@@ -473,14 +473,11 @@
         
         // === Mapping Management ===
         loadProductSelects: function() {
-            console.log('[v0] loadProductSelects - شروع', typeof inventorySyncData);
-            
             if (!inventorySyncData || !inventorySyncData.ajaxurl) {
-                console.log('[v0] خرابی: inventorySyncData موجود نہیں');
                 return;
             }
             
-            const self = this;  // context محفوظ کریں
+            const self = this;
             $.ajax({
                 url: inventorySyncData.ajaxurl,
                 type: 'POST',
@@ -489,20 +486,13 @@
                     nonce: inventorySyncData.nonce
                 },
                 success: function(response) {
-                    console.log('[v0] محصولات response:', response);
                     if (response.success && response.data) {
                         const site1 = response.data.site1 || [];
                         const site2 = response.data.site2 || [];
-                        console.log('[v0] سائٹ 1:', site1, 'سائٹ 2:', site2);
                         
                         self.populateSelect('#site1-product-select', site1);
                         self.populateSelect('#site2-product-select', site2);
-                    } else {
-                        console.log('[v0] response میں success نہیں یا data نہیں:', response);
                     }
-                },
-                error: function(xhr, status, error) {
-                    console.log('[v0] AJAX خرابی:', error, status, xhr);
                 }
             });
         },
@@ -532,7 +522,6 @@
         },
         
         loadMappings: function() {
-            console.log('[v0] loadMappings - شروع');
             const self = this;
             $.ajax({
                 url: inventorySyncData.ajaxurl,
@@ -542,13 +531,9 @@
                     nonce: inventorySyncData.nonce
                 },
                 success: function(response) {
-                    console.log('[v0] mappings response:', response);
                     if (response.success) {
                         self.renderMappings(response.data);
                     }
-                },
-                error: function(xhr, status, error) {
-                    console.log('[v0] loadMappings خرابی:', error);
                 }
             });
         },
@@ -584,7 +569,6 @@
         addMapping: function() {
             const site1 = $('#site1-product-select').val();
             const site2 = $('#site2-product-select').val();
-            console.log('[v0] addMapping:', site1, site2);
             
             if (!site1 || !site2) {
                 alert('لطفا دونوں محصولات انتخاب کریں');
@@ -602,7 +586,6 @@
                     site2_product_id: site2
                 },
                 success: function(response) {
-                    console.log('[v0] addMapping response:', response);
                     if (response.success) {
                         alert('Mapping افزوده شد');
                         $('#site1-product-select').val('');
@@ -613,7 +596,6 @@
                     }
                 },
                 error: function(xhr, status, error) {
-                    console.log('[v0] addMapping خرابی:', error);
                     alert('AJAX خرابی: ' + error);
                 }
             });
@@ -622,7 +604,6 @@
         syncAllMappings: function() {
             if (!confirm('تمام mappings کو sync کریں؟')) return;
             
-            console.log('[v0] syncAllMappings - شروع');
             const self = this;
             $.ajax({
                 url: inventorySyncData.ajaxurl,
@@ -632,16 +613,12 @@
                     nonce: inventorySyncData.nonce
                 },
                 success: function(response) {
-                    console.log('[v0] syncAllMappings response:', response);
                     if (response.success) {
                         alert('تمام mappings sync ہو گئے');
                         self.loadMappings();
                     } else {
                         alert('خرابی');
                     }
-                },
-                error: function(xhr, status, error) {
-                    console.log('[v0] syncAllMappings خرابی:', error);
                 }
             });
         },
@@ -649,7 +626,6 @@
         syncMapping: function(e) {
             e.preventDefault();
             const id = $(e.target).closest('button').data('id');
-            console.log('[v0] syncMapping:', id);
             
             const self = this;
             $.ajax({
@@ -661,13 +637,9 @@
                     mapping_id: id
                 },
                 success: function(response) {
-                    console.log('[v0] syncMapping response:', response);
                     if (response.success) {
                         self.loadMappings();
                     }
-                },
-                error: function(xhr, status, error) {
-                    console.log('[v0] syncMapping خرابی:', error);
                 }
             });
         },
@@ -678,7 +650,6 @@
             const id = $btn.data('id');
             const enabled = $btn.data('enabled');
             
-            console.log('[v0] toggleMapping:', id, 'enabled:', enabled);
             const self = this;
             $.ajax({
                 url: inventorySyncData.ajaxurl,
@@ -690,13 +661,9 @@
                     enabled: enabled ? 0 : 1
                 },
                 success: function(response) {
-                    console.log('[v0] toggleMapping response:', response);
                     if (response.success) {
                         self.loadMappings();
                     }
-                },
-                error: function(xhr, status, error) {
-                    console.log('[v0] toggleMapping خرابی:', error);
                 }
             });
         },
@@ -706,7 +673,6 @@
             if (!confirm('کیا یقین ہیں؟')) return;
             
             const id = $(e.target).closest('button').data('id');
-            console.log('[v0] deleteMapping:', id);
             
             const self = this;
             $.ajax({
@@ -718,14 +684,10 @@
                     mapping_id: id
                 },
                 success: function(response) {
-                    console.log('[v0] deleteMapping response:', response);
                     if (response.success) {
                         alert('Mapping حذف ہو گیا');
                         self.loadMappings();
                     }
-                },
-                error: function(xhr, status, error) {
-                    console.log('[v0] deleteMapping خرابی:', error);
                 }
             });
         }
