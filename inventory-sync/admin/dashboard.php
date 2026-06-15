@@ -182,31 +182,76 @@ if (!defined('ABSPATH')) exit;
         
         <!-- Mapping Tab -->
         <div id="mapping" class="tab-pane">
-            <h2><?php esc_html_e('مرتبط‌سازی محصولات', 'inventory-sync'); ?></h2>
+            <h2>مرتبط‌سازی محصولات</h2>
             <p class="description">
-                <?php esc_html_e('محصولات سایت 1 و 2 را در کنار هم ببینید و آنها را مرتبط کنید', 'inventory-sync'); ?>
+                محصولات سایت 1 و 2 را یکی کنید تا موجودی‌های آنها خودکار هماهنگ شوند
             </p>
             
-            <div class="mapping-container">
-                <div class="mapping-column">
-                    <h3><?php esc_html_e('سایت 1 - محصولات', 'inventory-sync'); ?></h3>
-                    <div class="products-list site1-products">
-                        <p><?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?></p>
-                    </div>
-                </div>
-                
-                <div class="mapping-column">
-                    <h3><?php esc_html_e('سایت 2 - محصولات', 'inventory-sync'); ?></h3>
-                    <div class="products-list site2-products">
-                        <p><?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?></p>
-                    </div>
-                </div>
+            <!-- Add New Mapping Form -->
+            <div style="background: #f9f9f9; padding: 20px; margin-bottom: 30px; border-radius: 4px;">
+                <h3>افزودن Mapping جدید</h3>
+                <table style="width: 100%;">
+                    <tr>
+                        <td style="padding: 10px; vertical-align: top;">
+                            <label style="display: block; margin-bottom: 5px;"><strong>محصول سایت 1:</strong></label>
+                            <select id="site1-product-select" style="width: 100%; padding: 8px; border: 1px solid #ddd;">
+                                <option value="">انتخاب کنید...</option>
+                            </select>
+                            <small style="color: #999;">ID: <span id="site1-product-id">-</span> | SKU: <span id="site1-product-sku">-</span></small>
+                        </td>
+                        <td style="padding: 10px; vertical-align: top; text-align: center;">
+                            <p style="margin-top: 35px;">↔</p>
+                        </td>
+                        <td style="padding: 10px; vertical-align: top;">
+                            <label style="display: block; margin-bottom: 5px;"><strong>محصول سایت 2:</strong></label>
+                            <select id="site2-product-select" style="width: 100%; padding: 8px; border: 1px solid #ddd;">
+                                <option value="">انتخاب کنید...</option>
+                            </select>
+                            <small style="color: #999;">ID: <span id="site2-product-id">-</span> | SKU: <span id="site2-product-sku">-</span></small>
+                        </td>
+                        <td style="padding: 10px; vertical-align: top;">
+                            <label style="display: block; margin-bottom: 5px;"><strong></strong></label>
+                            <button class="button button-primary" id="add-mapping-btn" style="width: 100%; padding: 8px;">
+                                ➕ افزودن Mapping
+                            </button>
+                        </td>
+                    </tr>
+                </table>
             </div>
             
-            <div class="mapping-actions">
-                <button class="button button-primary sync-all-btn">
-                    <?php esc_html_e('⚡ هماهنگ‌سازی همه موجودی‌ها', 'inventory-sync'); ?>
-                </button>
+            <!-- Existing Mappings -->
+            <div style="margin-top: 20px;">
+                <h3>Mappings موجود</h3>
+                <div style="margin-bottom: 15px;">
+                    <button class="button button-primary" id="sync-all-mappings-btn" style="padding: 8px 16px;">
+                        ⚡ هماهنگ کردن همه
+                    </button>
+                    <button class="button" id="refresh-mappings-btn" style="padding: 8px 16px;">
+                        🔄 تازه کنی
+                    </button>
+                </div>
+                
+                <table class="widefat striped" id="mappings-table">
+                    <thead>
+                        <tr style="background: #f5f5f5;">
+                            <th style="width: 40px; text-align: center;">وضعیت</th>
+                            <th style="width: 35%;">سایت 1</th>
+                            <th style="width: 80px; text-align: center;">موجودی</th>
+                            <th style="width: 30px; text-align: center;">↔</th>
+                            <th style="width: 35%;">سایت 2</th>
+                            <th style="width: 80px; text-align: center;">موجودی</th>
+                            <th style="width: 150px; text-align: center;">عملیات</th>
+                        </tr>
+                    </thead>
+                    <tbody class="mappings-list">
+                        <tr>
+                            <td colspan="7" style="text-align: center; padding: 30px;">
+                                <span class="spinner" style="visibility: visible;"></span>
+                                <br>درحال بارگذاری...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
         
