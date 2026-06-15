@@ -250,33 +250,36 @@ class Inventory_Sync_Manager {
         }
         
         $product_name = $product1['name'] ?? 'محصول بدون نام';
+        $original_sku = $product1['sku'] ?? '';
         
         // ۱. بررسی اینکه محصول در سایت 2 قبلاً وجود ندارد
-        $existing_product = $this->site2_api->product_exists_by_sku($product1['sku'] ?? '');
+        $existing_product = $this->site2_api->product_exists_by_sku($original_sku);
+        $site2_product_id = null;
+        
         if ($existing_product && !empty($existing_product['id'])) {
-            $error_msg = "محصول با SKU ({$product1['sku']}) در سایت 2 قبلاً وجود دارد (ID: {$existing_product['id']})";
-            
+            // محصول موجود است - بروز کن
+            $site2_product_id = $existing_product['id'];
             Inventory_Sync_Database::insert_log(
                 $site1_product_id,
                 $product_name,
-                'transfer_product',
+                'product_exists',
                 'سایت 1',
                 'سایت 2',
                 '',
-                $existing_product['id'],
-                'skipped',
-                $error_msg
+                $site2_product_id,
+                'info',
+                "محصول با SKU ({$original_sku}) در سایت 2 موجود است. بروز‌رسانی شد."
             );
+        } else {
+            // محصول جدید - بررسی SKU منحصر‌به‌فردی
+            $sku_to_use = $original_sku;
             
-            Inventory_Sync_Database::add_transferred_product(
-                $site1_product_id,
-                $existing_product['id'],
-                $product_name,
-                'failed',
-                $error_msg
-            );
+            // اگر SKU خالی است، یک SKU منحصر‌به‌فردی تولید کن
+            if (empty($sku_to_use)) {
+                $sku_to_use = 'prod-' . time() . '-' . $site1_product_id;
+            }
             
-            return new WP_Error('product_exists', $error_msg);
+            $product1['sku'] = $sku_to_use;
         }
         
         // ۲. انتقال دسته‌بندی‌ها و ویژگی‌ها
@@ -302,9 +305,11 @@ class Inventory_Sync_Manager {
         if (!empty($category_map)) {
             $new_categories = [];
             foreach (($product1['categories'] ?? []) as $cat) {
-                $cat_id = $cat['id'] ?? 0;
-                if (isset($category_map[$cat_id])) {
-                    $new_categories[] = ['id' => $category_map[$cat_id]];
+                $site1_cat_id = $cat['id'] ?? 0;
+                // بررسی اینکه آیا برای این دسته‌بندی mapping داریم
+                if (isset($category_map[$site1_cat_id])) {
+                    $site2_cat_id = $category_map[$site1_cat_id];
+                    $new_categories[] = ['id' => $site2_cat_id];
                 }
             }
             if (!empty($new_categories)) {
@@ -312,25 +317,43 @@ class Inventory_Sync_Manager {
             }
         }
         
-        // ۴. ایجاد محصول در سایت 2
-        $result = $this->site2_api->create_product($product_data);
+        // ۴. ایجاد یا بروز‌رسانی محصول در سایت 2
+        if ($site2_product_id !== null) {
+            // محصول موجود - بروز کن
+            $result = $this->site2_api->update_product($site2_product_id, $product_data);
+        } else {
+            // محصول جدید - ایجاد کن
+            Inventory_Sync_Database::insert_log(
+                $site1_product_id,
+                $product_name,
+                'create_product_start',
+                'سایت 1',
+                'سایت 2',
+                json_encode(['sku' => $product_data['sku'], 'categories_count' => count($product_data['categories'] ?? [])]),
+                '',
+                'info',
+                'شروع ایجاد محصول جدید'
+            );
+            
+            $result = $this->site2_api->create_product($product_data);
+        }
         
         if (is_wp_error($result)) {
             Inventory_Sync_Database::insert_log(
                 $site1_product_id,
                 $product_name,
-                'transfer_product',
+                'transfer_product_error',
                 'سایت 1',
                 'سایت 2',
-                '',
-                '',
+                json_encode($product_data),
+                $site2_product_id ?? '',
                 'failed',
                 $result->get_error_message()
             );
             
             Inventory_Sync_Database::add_transferred_product(
                 $site1_product_id,
-                0,
+                $site2_product_id ?? 0,
                 $product_name,
                 'failed',
                 $result->get_error_message()
@@ -490,27 +513,20 @@ class Inventory_Sync_Manager {
         
         $data = [
             'name' => $product1['name'] ?? '',
-            // نوع محصول را منتقل کن (simple / variable / ...) وگرنه همه ساده ساخته می‌شوند
             'type' => $type,
             'description' => $product1['description'] ?? '',
             'short_description' => $product1['short_description'] ?? '',
             'sku' => $product1['sku'] ?? '',
-            // قیمت‌ها را منتقل کن (برای محصول متغیّر قیمت روی خود متغیّرها تنظیم می‌شود)
             'regular_price' => isset($product1['regular_price']) ? (string) $product1['regular_price'] : '',
             'sale_price' => isset($product1['sale_price']) ? (string) $product1['sale_price'] : '',
-            // فقط آدرس (src) تصاویر را می‌فرستیم؛ ارسال id تصاویر سایت ۱ باعث خطای
-            // woocommerce_product_invalid_image_id در سایت ۲ می‌شود چون آن id ها در سایت مقصد وجود ندارند.
             'images' => $this->prepare_images($product1['images'] ?? []),
-            // دسته‌ها و برچسب‌ها را با name می‌فرستیم نه id سایت ۱ که در سایت ۲ نامعتبر است.
-            'categories' => $this->prepare_terms($product1['categories'] ?? []),
-            'tags' => $this->prepare_terms($product1['tags'] ?? []),
-            // ویژگی‌ها را پاک‌سازی کن: حذف id سایت مبدأ + حفظ options و فلگ variation
+            // دسته‌ها و برچسب‌ها را به‌صورت ID فرستاده‌اند (نه name)
+            'categories' => $this->prepare_terms_as_ids($product1['categories'] ?? []),
+            'tags' => $this->prepare_terms_as_ids($product1['tags'] ?? []),
             'attributes' => $this->prepare_attributes($product1['attributes'] ?? []),
-            'status' => 'draft' // منتشر نشود تا مدیر بررسی کند
+            'status' => 'draft'
         ];
         
-        // موجودی فقط برای محصول ساده روی خود محصول تنظیم می‌شود؛
-        // در محصول متغیّر موجودی روی هر متغیّر (variation) تنظیم می‌گردد.
         if ($type !== 'variable') {
             $data['manage_stock'] = $product1['manage_stock'] ?? false;
             if (! empty($data['manage_stock'])) {
@@ -520,6 +536,24 @@ class Inventory_Sync_Manager {
         }
         
         return $data;
+    }
+    
+    /**
+     * تبدیل دسته‌ها/برچسب‌ها به آرایه‌ای از ID‌ها
+     */
+    private function prepare_terms_as_ids($terms) {
+        if (empty($terms) || !is_array($terms)) {
+            return [];
+        }
+        
+        $clean = [];
+        foreach ($terms as $term) {
+            if (isset($term['id']) && !empty($term['id'])) {
+                $clean[] = ['id' => intval($term['id'])];
+            }
+        }
+        
+        return $clean;
     }
     
     /**

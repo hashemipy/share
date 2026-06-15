@@ -28,7 +28,7 @@ class Inventory_Sync_Category_Attribute_Sync {
     public function sync_product_categories($product_categories) {
         $category_map = [];
         
-        if (empty($product_categories)) {
+        if (empty($product_categories) || !is_array($product_categories)) {
             return $category_map;
         }
         
@@ -36,6 +36,13 @@ class Inventory_Sync_Category_Attribute_Sync {
             $category_id = $category['id'] ?? 0;
             
             if (!$category_id) {
+                continue;
+            }
+            
+            // بررسی اینکه آیا قبلاً mapping داریم
+            $existing_mapping = Inventory_Sync_Database::get_category_mapping($category_id);
+            if ($existing_mapping && !empty($existing_mapping->site2_category_id)) {
+                $category_map[$category_id] = $existing_mapping->site2_category_id;
                 continue;
             }
             
