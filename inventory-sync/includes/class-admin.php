@@ -146,6 +146,7 @@ class Inventory_Sync_Admin {
         
         $site = sanitize_text_field($_POST['site'] ?? '');
         $page = intval($_POST['page'] ?? 1);
+        $search = sanitize_text_field($_POST['search'] ?? '');
         
         if ($site === 'site1') {
             $api = new Inventory_Sync_API(
@@ -161,13 +162,34 @@ class Inventory_Sync_Admin {
             );
         }
         
-        $products = $api->get_products(50, $page);
-        
-        if (is_wp_error($products)) {
-            wp_send_json_error($products->get_error_message());
+        // صرف WooCommerce سایت (site1) کے لیے
+        if ($site === 'site1') {
+            $products = wc_get_products([
+                'limit' => 50,
+                'offset' => ($page - 1) * 50,
+                's' => $search ?: ''
+            ]);
+            
+            $data = [];
+            foreach ($products as $product) {
+                $data[] = [
+                    'id' => $product->get_id(),
+                    'name' => $product->get_name(),
+                    'sku' => $product->get_sku() ?: 'N/A'
+                ];
+            }
+        } else {
+            // Remote سائٹ کے لیے
+            $products = $api->get_products(50, $page, $search);
+            
+            if (is_wp_error($products)) {
+                wp_send_json_error($products->get_error_message());
+            }
+            
+            $data = $products;
         }
         
-        wp_send_json_success($products);
+        wp_send_json_success($data);
     }
     
     public function ajax_save_mapping() {
