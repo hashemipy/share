@@ -40,23 +40,27 @@ class Inventory_Sync_Manager {
     }
     
     /**
-     * شنیدن تغییرات موجودی و فروش‌ها
+     * شنیدن تغییرات موجودی اور فروش‌ہای
      */
     private function init_hooks() {
-        // وقتی سفارش کامل شود، موجودی را sync کن
+        // ایک سفارش مکمل ہو تو موجودی تبدیل ہوگی
+        add_action('woocommerce_payment_complete', [$this, 'sync_on_order'], 10, 1);
+        add_action('woocommerce_order_status_processing', [$this, 'sync_on_order'], 10, 1);
         add_action('woocommerce_order_status_completed', [$this, 'sync_on_order'], 10, 1);
         
-        // وقتی موجودی دستی تغییر کند (محصول ساده)
-        add_action('woocommerce_product_set_stock', [$this, 'sync_on_stock_change'], 10, 1);
-        // وقتی موجودی یک واریاسیون تغییر کند
-        add_action('woocommerce_variation_set_stock', [$this, 'sync_on_stock_change'], 10, 1);
-        // وقتی محصول ذخیره/ویرایش شود (پوشش تغییرات دستی موجودی در ادمین)
-        add_action('woocommerce_update_product', [$this, 'sync_on_product_update'], 20, 1);
+        // جب موجودی منفی ہو تو reduce stock ہو
+        add_action('woocommerce_reduce_order_stock', [$this, 'sync_on_order_stock_change'], 10, 1);
+        add_action('woocommerce_restore_order_stock', [$this, 'sync_on_order_stock_change'], 10, 1);
         
-        // *** بسیار مهم: handler رویدادهای زمان‌بندی‌شده ***
-        // بدون این‌ها، sync خودکار هرگز اجرا نمی‌شد
-        add_action('inventory_sync_mapping', [$this, 'sync_inventory'], 10, 1);
-        add_action('inventory_sync_immediate', [$this, 'sync_all_mappings'], 10, 0);
+        // ادمین یا فرنٹ اینڈ سے موجودی ٹھیک کریں
+        add_action('woocommerce_product_set_stock', [$this, 'sync_on_stock_change'], 10, 1);
+        
+        // جب محصول محفوظ ہو تو check کریں
+        add_action('woocommerce_update_product', [$this, 'sync_on_product_update'], 20, 1);
+        add_action('woocommerce_save_product_variation', [$this, 'sync_on_variation_update'], 20, 1);
+        
+        // متغیر موجودی میں تبدیلی
+        add_action('woocommerce_product_inventory_status_changed', [$this, 'sync_on_inventory_status_change'], 10, 3);
     }
     
     /**
@@ -98,23 +102,39 @@ class Inventory_Sync_Manager {
     }
     
     /**
-     * هنگام تکمیل سفارش - موجودی را sync کن
+     * جب سفارش مکمل ہو یا stock reduce ہو
      */
     public function sync_on_order($order_id) {
         if (!Inventory_Sync_Settings::get_auto_sync_enabled()) {
             return;
         }
         
-        // برنامه‌ریزی کن که 5 ثانیه بعد sync شود (تا سایت وقت داشته باشد)
-        wp_schedule_single_event(
-            time() + 5,
-            'inventory_sync_immediate'
-        );
+        // تمام mappings کو فوری sync کریں
+        $this->sync_all_mappings();
     }
     
     /**
-     * هنگام تغییر موجودی - تمام mapped محصولات را sync کن
-     * این متد هم برای محصول ساده و هم برای واریاسیون فراخوانی می‌شود
+     * جب order stock reduce/restore ہو
+     */
+    public function sync_on_order_stock_change($order) {
+        if (!Inventory_Sync_Settings::get_auto_sync_enabled()) {
+            return;
+        }
+        
+        // اگر order object ہے تو ID لیں
+        if (is_object($order)) {
+            $order_id = $order->get_id();
+        } else {
+            $order_id = $order;
+        }
+        
+        // تمام mappings کو sync کریں
+        $this->sync_all_mappings();
+    }
+    
+    /**
+     * ہنگام محصول یا متغیر کی موجودی تبدیل ہو
+     * یہ ادمین یا فرنٹ‌اینڈ سے موجودی تبدیل کرنے پر کال ہوتا ہے
      */
     public function sync_on_stock_change($product) {
         if (!Inventory_Sync_Settings::get_auto_sync_enabled()) {
@@ -125,18 +145,18 @@ class Inventory_Sync_Manager {
             return;
         }
         
-        // اگر واریاسیون است، شناسه محصول والد را بگیر چون mapping بر اساس والد است
         $product_id = $product->get_id();
+        
+        // اگر متغیر ہے تو والد کی ID لیں
         if (method_exists($product, 'get_parent_id') && $product->get_parent_id()) {
             $product_id = $product->get_parent_id();
         }
         
+        // اس محصول کو ڈھونڈ یہ جانیں کہ کون سی mapping میں ہے
         global $wpdb;
-        
-        // پیدا کن این محصول در کدام mapping قرار دارد
         $mapping = $wpdb->get_row(
             $wpdb->prepare(
-                "SELECT * FROM {$wpdb->prefix}inventory_sync_mapping 
+                "SELECT id FROM {$wpdb->prefix}inventory_sync_mapping 
                  WHERE (site1_product_id = %d OR site2_product_id = %d) 
                  AND sync_enabled = 1 LIMIT 1",
                 $product_id,
@@ -145,12 +165,91 @@ class Inventory_Sync_Manager {
         );
         
         if ($mapping) {
-            // برنامه‌ریزی کن برای sync
-            wp_schedule_single_event(
-                time() + 3,
-                'inventory_sync_mapping',
-                [$mapping->id]
-            );
+            // فوری sync
+            $this->sync_inventory($mapping->id);
+        }
+    }
+    
+    /**
+     * جب محصول اپڈیٹ ہو
+     */
+    public function sync_on_product_update($product_id) {
+        if (!Inventory_Sync_Settings::get_auto_sync_enabled()) {
+            return;
+        }
+        
+        global $wpdb;
+        $mapping = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}inventory_sync_mapping 
+                 WHERE (site1_product_id = %d OR site2_product_id = %d) 
+                 AND sync_enabled = 1 LIMIT 1",
+                $product_id,
+                $product_id
+            )
+        );
+        
+        if ($mapping) {
+            $this->sync_inventory($mapping->id);
+        }
+    }
+    
+    /**
+     * جب متغیر محصول اپڈیٹ ہو
+     */
+    public function sync_on_variation_update($variation_id, $variation_obj) {
+        if (!Inventory_Sync_Settings::get_auto_sync_enabled()) {
+            return;
+        }
+        
+        // متغیر کی والد ID حاصل کریں
+        $variation = wc_get_product($variation_id);
+        if (!$variation || !method_exists($variation, 'get_parent_id')) {
+            return;
+        }
+        
+        $parent_id = $variation->get_parent_id();
+        if (!$parent_id) {
+            return;
+        }
+        
+        global $wpdb;
+        $mapping = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}inventory_sync_mapping 
+                 WHERE (site1_product_id = %d OR site2_product_id = %d) 
+                 AND sync_enabled = 1 LIMIT 1",
+                $parent_id,
+                $parent_id
+            )
+        );
+        
+        if ($mapping) {
+            $this->sync_inventory($mapping->id);
+        }
+    }
+    
+    /**
+     * جب موجودی status تبدیل ہو (in stock → out of stock یا اس کے برعکس)
+     */
+    public function sync_on_inventory_status_change($product_id, $status, $product) {
+        if (!Inventory_Sync_Settings::get_auto_sync_enabled()) {
+            return;
+        }
+        
+        global $wpdb;
+        $mapping = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}inventory_sync_mapping 
+                 WHERE (site1_product_id = %d OR site2_product_id = %d) 
+                 AND sync_enabled = 1 LIMIT 1",
+                $product_id,
+                $product_id
+            )
+        );
+        
+        if ($mapping) {
+            $this->sync_inventory($mapping->id);
         }
     }
     
@@ -985,7 +1084,7 @@ class Inventory_Sync_Manager {
      * WooCommerce واریاسیون را به محصول متصل نمی‌کند.
      * 
      * @param array $attributes آرایه ویژگی‌های متغیر از سایت 1
-     * @param array $parent_attributes (اختیاری) ویژگی‌های والد که قبلاً resolve شده‌اند
+     * @param array $parent_attributes (اختیاری) ویژگی‌های والد که قبل��ً resolve شده‌اند
      * @return array ویژگی‌های آماده‌شده برای API
      */
     private function prepare_variation_attributes($attributes, $parent_attributes = []) {
@@ -1166,7 +1265,7 @@ class Inventory_Sync_Manager {
         }
         
         // ۲) جستجو بر اساس نام در ویژگی‌های سایت ۲ (با کش)
-        // ⭐ اگر ویژگی هنوز sync نشده، اما به نام موجود است
+        // ⭐ اگر ویژگی هنوز sync نشده، اما ب�� نام موجود است
         if (!empty($attr_name)) {
             if ($this->site2_attributes_cache === null) {
                 $attrs = $this->site2_api->get_attributes();
