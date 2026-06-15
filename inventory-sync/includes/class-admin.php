@@ -22,6 +22,10 @@ class Inventory_Sync_Admin {
         add_action('wp_ajax_inventory_sync_transfer_products', [$this, 'ajax_transfer_products']);
         add_action('wp_ajax_inventory_sync_get_logs', [$this, 'ajax_get_logs']);
         add_action('wp_ajax_inventory_sync_get_transferred_products', [$this, 'ajax_get_transferred_products']);
+        
+        // Mapping handlers
+        add_action('wp_ajax_inventory_sync_get_mappings', [$this, 'ajax_get_mappings']);
+        add_action('wp_ajax_inventory_sync_sync_all', [$this, 'ajax_sync_all']);
     }
     
     public function add_menu() {
@@ -281,5 +285,58 @@ class Inventory_Sync_Admin {
         $products = Inventory_Sync_Database::get_transferred_products($limit, $offset);
         
         wp_send_json_success($products);
+    }
+    
+    /**
+     * تمام mappings حاصل کریں
+     */
+    public function ajax_get_mappings() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('رسائی نہیں');
+        }
+        
+        global $wpdb;
+        $mappings = $wpdb->get_results(
+            "SELECT * FROM {$wpdb->prefix}inventory_sync_mapping WHERE 1=1 ORDER BY created_at DESC LIMIT 100"
+        );
+        
+        // ہر mapping کے لیے محصول کی معلومات شامل کریں
+        foreach ($mappings as $m) {
+            $product1 = wc_get_product($m->site1_product_id);
+            $product2 = wc_get_product($m->site2_product_id);
+            
+            $m->site1_name = $product1 ? $product1->get_name() : 'حذف شدہ';
+            $m->site2_name = $product2 ? $product2->get_name() : 'حذف شدہ';
+            $m->site1_stock = $product1 ? $product1->get_stock_quantity() : 0;
+            $m->site2_stock = $product2 ? $product2->get_stock_quantity() : 0;
+        }
+        
+        wp_send_json_success($mappings);
+    }
+    
+    /**
+     * تمام mappings کو ہماہنگ کریں
+     */
+    public function ajax_sync_all() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('رسائی نہیں');
+        }
+        
+        global $wpdb;
+        $mappings = $wpdb->get_results(
+            "SELECT id FROM {$wpdb->prefix}inventory_sync_mapping WHERE sync_enabled = 1"
+        );
+        
+        $sync_manager = Inventory_Sync_Manager::get_instance();
+        
+        foreach ($mappings as $m) {
+            $sync_manager->sync_inventory($m->id);
+        }
+        
+        wp_send_json_success('تمام mappings ہماہنگ ہو گئے');
     }
 }

@@ -21,6 +21,7 @@
             
             // Mapping
             $(document).on('click', '.sync-all-btn', this.syncAllInventory.bind(this));
+            $(document).on('click', '.refresh-mappings', this.loadMappings.bind(this));
             $(document).on('click', '.product-item', this.selectProduct.bind(this));
             
             // Transfer
@@ -31,8 +32,7 @@
         },
         
         loadInitialData: function() {
-            this.loadProducts('site1');
-            this.loadProducts('site2');
+            this.loadMappings();
             this.loadTransferProducts();
             this.loadTransferredProducts();
             this.loadLogs();
@@ -461,6 +461,80 @@
             });
             
             $('.logs-list').html(html);
+        },
+        
+        // === Mapping Management ===
+        loadMappings: function() {
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_get_mappings',
+                    nonce: inventorySyncData.nonce
+                },
+                success: (response) => {
+                    if (response.success) {
+                        this.renderMappings(response.data);
+                    }
+                },
+                error: () => {
+                    $('.mappings-list').html(
+                        '<tr><td colspan="7" style="text-align: center; color: red;">خرابی: mappings لوڈ نہیں ہو سکے</td></tr>'
+                    );
+                }
+            });
+        },
+        
+        renderMappings: function(mappings) {
+            if (!mappings || mappings.length === 0) {
+                $('.mappings-list').html(
+                    '<tr><td colspan="7" style="text-align: center; padding: 20px;">کوئی mapping نہیں</td></tr>'
+                );
+                return;
+            }
+            
+            let html = '';
+            mappings.forEach(m => {
+                const statusIcon = m.sync_enabled ? '✓' : '○';
+                const site1Name = m.site1_name || '<em>حذف شدہ</em>';
+                const site2Name = m.site2_name || '<em>حذف شدہ</em>';
+                
+                html += `
+                    <tr>
+                        <td style="text-align: center;">${statusIcon}</td>
+                        <td><strong>${site1Name}</strong><br><small style="color: #999;">SKU: ${m.site1_sku || '-'}</small></td>
+                        <td style="text-align: center; font-weight: bold;">${m.site1_stock || 0}</td>
+                        <td style="text-align: center; color: #2271b1;">↔</td>
+                        <td><strong>${site2Name}</strong><br><small style="color: #999;">SKU: ${m.site2_sku || '-'}</small></td>
+                        <td style="text-align: center; font-weight: bold;">${m.site2_stock || 0}</td>
+                        <td>
+                            <button class="button button-small sync-mapping" data-id="${m.id}" title="ہماہنگ کریں">🔄</button>
+                            <button class="button button-small toggle-mapping" data-id="${m.id}" data-enabled="${m.sync_enabled ? 1 : 0}" title="${m.sync_enabled ? 'غیر فعال' : 'فعال'} کریں">${m.sync_enabled ? '⏹' : '▶'}</button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            $('.mappings-list').html(html);
+        },
+        
+        syncAllInventory: function(e) {
+            if (e) e.preventDefault();
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_sync_all',
+                    nonce: inventorySyncData.nonce
+                },
+                success: (response) => {
+                    if (response.success) {
+                        alert('همه mappings ہماہنگ ہو گئے!');
+                        this.loadMappings();
+                    }
+                }
+            });
         }
     };
     

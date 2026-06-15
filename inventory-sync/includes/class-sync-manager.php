@@ -79,7 +79,8 @@ class Inventory_Sync_Manager {
         );
         
         if ($mapping) {
-            wp_schedule_single_event(time() + 5, 'inventory_sync_mapping', [$mapping->id]);
+            // فوری sync - بغیر Cron کے
+            $this->sync_inventory($mapping->id);
         }
     }
     
@@ -105,11 +106,8 @@ class Inventory_Sync_Manager {
             return;
         }
         
-        // برنامه‌ریزی کن که 5 ثانیه بعد sync شود (تا سایت وقت داشته باشد)
-        wp_schedule_single_event(
-            time() + 5,
-            'inventory_sync_immediate'
-        );
+        // فوری sync - تمام mappings کو ہماہنگ کریں
+        $this->sync_all_mappings();
     }
     
     /**
@@ -145,12 +143,8 @@ class Inventory_Sync_Manager {
         );
         
         if ($mapping) {
-            // برنامه‌ریزی کن برای sync
-            wp_schedule_single_event(
-                time() + 3,
-                'inventory_sync_mapping',
-                [$mapping->id]
-            );
+            // فوری sync - بغیر Cron کے
+            $this->sync_inventory($mapping->id);
         }
     }
     
@@ -427,7 +421,7 @@ class Inventory_Sync_Manager {
     }
     
     /**
-     * انتقال محصول شامل دسته‌بندی‌ها، ویژگی‌ها و متغیّرها
+     * انتقال محصول شامل دسته‌بندی‌ها، ویژگی‌ه�� و متغیّرها
      * 
      * ⭐ بسیار مهم: این متد حالا Idempotent است
      * یعنی اگر محصول قبلاً منتقل شده بود و پاک‌شد و دوباره منتقل شود، کار می‌کند
