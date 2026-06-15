@@ -184,52 +184,29 @@ if (!defined('ABSPATH')) exit;
         <div id="mapping" class="tab-pane">
             <h2><?php esc_html_e('مرتبط‌سازی محصولات', 'inventory-sync'); ?></h2>
             <p class="description">
-                <?php esc_html_e('محصولات مختلف بین سایت‌ها را مرتبط کنید تا موجودی‌های آنها خودکار مطابقت داشته باشند', 'inventory-sync'); ?>
+                <?php esc_html_e('محصولات سایت 1 و 2 را در کنار هم ببینید و آنها را مرتبط کنید', 'inventory-sync'); ?>
             </p>
             
-            <div style="margin: 20px 0; display: flex; gap: 10px; flex-wrap: wrap;">
-                <button class="button button-primary sync-all-btn" style="padding: 8px 16px;">
-                    ⚡ همه را هماهنگ کن
-                </button>
-                <button class="button refresh-mappings" style="padding: 8px 16px;">
-                    🔄 تازه‌کنی
-                </button>
-                <button class="button add-new-mapping-btn" style="padding: 8px 16px;">
-                    ➕ ایجاد جدید
-                </button>
+            <div class="mapping-container">
+                <div class="mapping-column">
+                    <h3><?php esc_html_e('سایت 1 - محصولات', 'inventory-sync'); ?></h3>
+                    <div class="products-list site1-products">
+                        <p><?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?></p>
+                    </div>
+                </div>
+                
+                <div class="mapping-column">
+                    <h3><?php esc_html_e('سایت 2 - محصولات', 'inventory-sync'); ?></h3>
+                    <div class="products-list site2-products">
+                        <p><?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?></p>
+                    </div>
+                </div>
             </div>
             
-            <div style="margin: 15px 0;">
-                <input type="text" id="mapping-search-box" class="regular-text" placeholder="جستجو نام یا SKU..." style="max-width: 300px;">
-            </div>
-            
-            <table class="widefat striped" style="margin-top: 20px;">
-                <thead>
-                    <tr style="background: #f5f5f5;">
-                        <th style="width: 50px; text-align: center;">وضعیت</th>
-                        <th style="width: 32%;">محصول سایت 1</th>
-                        <th style="width: 80px; text-align: center;">موجودی</th>
-                        <th style="width: 30px; text-align: center;">↔</th>
-                        <th style="width: 32%;">محصول سایت 2</th>
-                        <th style="width: 80px; text-align: center;">موجودی</th>
-                        <th style="width: 150px; text-align: center;">عملیات</th>
-                    </tr>
-                </thead>
-                <tbody class="mappings-list">
-                    <tr>
-                        <td colspan="7" style="text-align: center; padding: 40px;">
-                            <span class="spinner" style="visibility: visible; float: none;"></span>
-                            <br><br>درحال بارگذاری mappings...
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-            
-            <div style="margin-top: 20px; padding: 15px; background: #f0f0f0; border-left: 4px solid #0073aa;">
-                <p><strong>📊 آمار:</strong></p>
-                <p>کل Mappings: <span id="total-mappings" style="font-weight: bold; color: #0073aa;">0</span> | 
-                   فعال: <span id="active-mappings" style="font-weight: bold; color: #28a745;">0</span> | 
-                   غیر فعال: <span id="inactive-mappings" style="font-weight: bold; color: #dc3545;">0</span></p>
+            <div class="mapping-actions">
+                <button class="button button-primary sync-all-btn">
+                    <?php esc_html_e('⚡ هماهنگ‌سازی همه موجودی‌ها', 'inventory-sync'); ?>
+                </button>
             </div>
         </div>
         
