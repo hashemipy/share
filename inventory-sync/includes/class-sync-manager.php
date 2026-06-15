@@ -52,7 +52,8 @@ class Inventory_Sync_Manager {
         add_action('woocommerce_product_set_stock', [$this, 'sync_on_stock_change'], 10, 1);
         
         // ۲. وقتی موجودی یک واریاسیون تغییر کند
-        add_action('woocommerce_variation_set_stock', [$this, 'sync_on_stock_change'], 10, 1);
+        // ⭐ مهم: هنگام ویرایش واریاسیون توسط ادمین
+        add_action('woocommerce_update_product_variation', [$this, 'sync_on_variation_update'], 10, 2);
         
         // ۳. وقتی محصول ذخیره/ویرایش شود (پوشش تغییرات دستی موجودی در ادمین)
         add_action('woocommerce_update_product', [$this, 'sync_on_product_update'], 20, 1);
@@ -1335,7 +1336,50 @@ class Inventory_Sync_Manager {
     }
     
     /**
-     * وقتی موجودی یک محصول در سفارش تغییر کند
+     * وقتی یک واریاسیون ویرایش/ذخیره شود
+     * 
+     * ⭐ مهم: این برای محصولات متغیّر است
+     * @param int $variation_id - شناسه واریاسیون
+     * @param WC_Product_Variation $variation - object واریاسیون
+     */
+    public function sync_on_variation_update($variation_id, $variation) {
+        if (!Inventory_Sync_Settings::get_auto_sync_enabled()) {
+            return;
+        }
+        
+        if (!is_object($variation)) {
+            $variation = wc_get_product($variation_id);
+        }
+        
+        if (!$variation || !method_exists($variation, 'get_parent_id')) {
+            return;
+        }
+        
+        // واریاسیون باید محصول والد داشته باشد
+        $product_id = $variation->get_parent_id();
+        if (!$product_id) {
+            return;
+        }
+        
+        // پیدا کن این محصول والد در کدام mapping قرار دارد
+        global $wpdb;
+        $mapping = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}inventory_sync_mapping 
+                 WHERE (site1_product_id = %d OR site2_product_id = %d) 
+                 AND sync_enabled = 1 LIMIT 1",
+                $product_id,
+                $product_id
+            )
+        );
+        
+        if ($mapping) {
+            // اجرای فوری
+            sleep(0.5); // 500ms تاخیر برای جلوگیری از concurrent calls
+            $this->sync_inventory($mapping->id);
+        }
+    }
+    
      * 
      * @param int $quantity - مقدار جدید
      * @param WC_Order_Item_Product $item - آیتم سفارش
