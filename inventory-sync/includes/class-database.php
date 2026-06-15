@@ -252,4 +252,33 @@ class Inventory_Sync_Database {
         
         return !empty($result);
     }
+    
+    /**
+     * دریافت محصول منتقل‌شده بر اساس site1_product_id
+     * برای بررسی اینکه محصول پاک شده است یا نه
+     */
+    public static function get_transferred_product_by_site1($site1_id) {
+        global $wpdb;
+        
+        return $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}inventory_sync_products_transferred WHERE site1_product_id = %d LIMIT 1",
+                $site1_id
+            )
+        );
+    }
+    
+    /**
+     * حذف رکورد محصول منتقل‌شده
+     * وقتی محصول در سایت 2 پاک شود و دوباره انتقال یابد
+     */
+    public static function delete_transferred_product($site1_id) {
+        global $wpdb;
+        
+        return $wpdb->delete(
+            $wpdb->prefix . 'inventory_sync_products_transferred',
+            ['site1_product_id' => $site1_id],
+            ['%d']
+        );
+    }
 }

@@ -410,10 +410,16 @@ class Inventory_Sync_Manager {
         // ۱. بررسی اینکه محصول در سایت 2 قبلاً وجود ندارد
         $existing_product = $this->site2_api->product_exists_by_sku($original_sku);
         $site2_product_id = null;
+        $site2_product_exists = false;
+        
+        // ⭐ بررسی اضافی: اگر در transferred_products موجود است اما در سایت 2 نیست
+        // این یعنی محصول پاک شده است و ما باید آن را دوباره ایجاد کنیم
+        $transferred = Inventory_Sync_Database::get_transferred_product_by_site1($site1_product_id);
         
         if ($existing_product && !empty($existing_product['id'])) {
             // محصول موجود است - بروز کن
             $site2_product_id = $existing_product['id'];
+            $site2_product_exists = true;
             Inventory_Sync_Database::insert_log(
                 $site1_product_id,
                 $product_name,
@@ -424,6 +430,21 @@ class Inventory_Sync_Manager {
                 $site2_product_id,
                 'info',
                 "محصول با SKU ({$original_sku}) در سایت 2 موجود است. بروز‌رسانی شد."
+            );
+        } elseif ($transferred && !empty($transferred->site2_product_id)) {
+            // ⭐ محصول قبلاً منتقل شده اما اکنون در سایت 2 پاک شده است
+            // پاک کردن mapping های قدیمی و ایجاد دوباره
+            Inventory_Sync_Database::delete_transferred_product($site1_product_id);
+            Inventory_Sync_Database::insert_log(
+                $site1_product_id,
+                $product_name,
+                'product_recreated',
+                'سایت 1',
+                'سایت 2',
+                'محصول پاک شده و دوباره ایجاد می‌شود',
+                '',
+                'info',
+                'محصول قبلاً منتقل شده بود اما در سایت 2 پاک شده است. دوباره ایجاد می‌شود.'
             );
         } else {
             // محصول جدید - بررسی SKU منحصر‌به‌فردی
@@ -999,7 +1020,7 @@ class Inventory_Sync_Manager {
     /**
      * آماده‌سازی ویژگی‌های محصول والد برای سایت مقصد.
      * 
-     * بسیار مهم: هویت ویژگی والد باید دقیقاً با هویت ویژگی واریاسیون یکی باشد
+     * بسیا�� مهم: هویت ویژگی والد باید دقیقاً با هویت ویژگی واریاسیون یکی باشد
      * تا ووکامرس بتواند واریاسیون‌ها را به ویژگی والد متصل کند.
      * - ویژگی گلوبال: با id (مپ‌شده به سایت ۲) ارسال می‌شود
      * - ویژگی سفارشی: با name ارسال می‌شود

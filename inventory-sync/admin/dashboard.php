@@ -184,28 +184,101 @@ if (!defined('ABSPATH')) exit;
         <div id="mapping" class="tab-pane">
             <h2><?php esc_html_e('مرتبط‌سازی محصولات', 'inventory-sync'); ?></h2>
             <p class="description">
-                <?php esc_html_e('محصولات سایت 1 و 2 را در کنار هم ببینید و آنها را مرتبط کنید', 'inventory-sync'); ?>
+                <?php esc_html_e('محصولات منتقل‌شده از سایت 1 به سایت 2 و موجودی آن‌ها را مدیریت کنید', 'inventory-sync'); ?>
             </p>
             
+            <!-- Automatic sync info -->
+            <div class="inventory-sync-notice notice notice-success" style="margin-bottom: 20px;">
+                <p>
+                    <strong><?php esc_html_e('⚙️ هماهنگ‌سازی خودکار:', 'inventory-sync'); ?></strong>
+                    <?php esc_html_e('موجودی محصولات هر 10 دقیقه خودکار به‌روز می‌شود', 'inventory-sync'); ?>
+                </p>
+                <p id="next-sync-time" style="margin-top: 10px; font-size: 12px; color: #666;">
+                    <?php esc_html_e('بعدی هماهنگ‌سازی: محاسبه می‌شود...', 'inventory-sync'); ?>
+                </p>
+            </div>
+            
             <div class="mapping-container">
-                <div class="mapping-column">
-                    <h3><?php esc_html_e('سایت 1 - محصولات', 'inventory-sync'); ?></h3>
-                    <div class="products-list site1-products">
-                        <p><?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?></p>
-                    </div>
+                <!-- Automatically Mapped Products -->
+                <div class="mapping-section">
+                    <h3>
+                        <?php esc_html_e('✅ محصولات مرتبط‌شده (خودکار)', 'inventory-sync'); ?>
+                        <span class="count-badge auto-mapped-count">0</span>
+                    </h3>
+                    <p style="font-size: 13px; color: #666;">
+                        <?php esc_html_e('محصولاتی که خودکار از سایت 1 به سایت 2 منتقل شده‌اند', 'inventory-sync'); ?>
+                    </p>
+                    <table class="widefat striped" style="margin-top: 10px;">
+                        <thead>
+                            <tr>
+                                <th style="width: 50px;"></th>
+                                <th><?php esc_html_e('نام محصول', 'inventory-sync'); ?></th>
+                                <th><?php esc_html_e('SKU', 'inventory-sync'); ?></th>
+                                <th><?php esc_html_e('موجودی S1', 'inventory-sync'); ?></th>
+                                <th><?php esc_html_e('موجودی S2', 'inventory-sync'); ?></th>
+                                <th><?php esc_html_e('وضعیت', 'inventory-sync'); ?></th>
+                                <th><?php esc_html_e('عملیات', 'inventory-sync'); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody class="auto-mapped-products">
+                            <tr>
+                                <td colspan="7" class="text-center">
+                                    <?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
                 
-                <div class="mapping-column">
-                    <h3><?php esc_html_e('سایت 2 - محصولات', 'inventory-sync'); ?></h3>
-                    <div class="products-list site2-products">
-                        <p><?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?></p>
+                <!-- Manual Mapping -->
+                <div class="mapping-section" style="margin-top: 40px;">
+                    <h3><?php esc_html_e('🔗 مرتبط‌سازی دستی', 'inventory-sync'); ?></h3>
+                    <p style="font-size: 13px; color: #666;">
+                        <?php esc_html_e('محصولاتی که هنوز مرتبط نشده‌اند را در کنار هم ببینید و دستی مرتبط کنید', 'inventory-sync'); ?>
+                    </p>
+                    
+                    <div class="manual-mapping-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px;">
+                        <!-- Site 1 Products -->
+                        <div>
+                            <h4><?php esc_html_e('سایت 1 - محصولات', 'inventory-sync'); ?></h4>
+                            <input type="text" class="form-control site1-search" 
+                                   placeholder="<?php esc_html_e('جستجو...', 'inventory-sync'); ?>" 
+                                   style="margin-bottom: 10px;">
+                            <div class="products-list site1-unmapped-products" style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 10px;">
+                                <p style="text-align: center; color: #999;">
+                                    <?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?>
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <!-- Site 2 Products -->
+                        <div>
+                            <h4><?php esc_html_e('سایت 2 - محصولات', 'inventory-sync'); ?></h4>
+                            <input type="text" class="form-control site2-search" 
+                                   placeholder="<?php esc_html_e('جستجو...', 'inventory-sync'); ?>" 
+                                   style="margin-bottom: 10px;">
+                            <div class="products-list site2-unmapped-products" style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 10px;">
+                                <p style="text-align: center; color: #999;">
+                                    <?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="manual-mapping-actions" style="margin-top: 15px;">
+                        <button class="button button-secondary create-manual-mapping-btn" disabled>
+                            <?php esc_html_e('🔗 مرتبط کردن انتخاب شده', 'inventory-sync'); ?>
+                        </button>
                     </div>
                 </div>
             </div>
             
-            <div class="mapping-actions">
-                <button class="button button-primary sync-all-btn">
-                    <?php esc_html_e('⚡ هماهنگ‌سازی همه موجودی‌ها', 'inventory-sync'); ?>
+            <div class="mapping-actions" style="margin-top: 30px;">
+                <button class="button button-primary manual-sync-inventory-btn">
+                    <?php esc_html_e('⚡ همگام‌سازی دستی موجودی', 'inventory-sync'); ?>
+                </button>
+                <button class="button button-secondary refresh-mapping-btn">
+                    <?php esc_html_e('🔄 بازخوانی لیست', 'inventory-sync'); ?>
                 </button>
             </div>
         </div>

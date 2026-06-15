@@ -19,6 +19,10 @@ class Inventory_Sync_Plugin {
         require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-category-attribute-sync.php';
         require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-sync-manager.php';
         
+        // Auto Sync - هماهنگ‌سازی خودکار هر 10 دقیقه
+        require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-auto-sync.php';
+        new Inventory_Sync_Auto_Sync();
+        
         // Admin
         if (is_admin()) {
             require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-admin.php';
