@@ -5,8 +5,9 @@ class Inventory_Sync_API {
     private $site_url;
     private $consumer_key;
     private $consumer_secret;
-    private $timeout = 30;
+    private $timeout = 60; // افزایش timeout برای عملیات‌های بزرگ
     private $retry_count = 3;
+    private static $cache = []; // کش برای دسته‌بندی‌ها و ویژگی‌ها
     
     public function __construct($site_url, $consumer_key, $consumer_secret) {
         $this->site_url = rtrim($site_url, '/');
@@ -48,6 +49,25 @@ class Inventory_Sync_API {
     }
     
     /**
+     * دریافت محصول بر اساس SKU
+     */
+    public function get_product_by_sku($sku) {
+        $endpoint = '/wp-json/wc/v3/products';
+        $params = [
+            'sku' => $sku,
+            'per_page' => 1
+        ];
+        
+        $products = $this->request('GET', $endpoint, [], $params);
+        
+        if (is_wp_error($products) || empty($products) || !is_array($products)) {
+            return null;
+        }
+        
+        return isset($products[0]) ? $products[0] : null;
+    }
+    
+    /**
      * اپدیت موجودی
      */
     public function update_product_stock($product_id, $stock) {
@@ -83,6 +103,14 @@ class Inventory_Sync_API {
     public function create_product($product_data) {
         $endpoint = '/wp-json/wc/v3/products';
         return $this->request('POST', $endpoint, $product_data);
+    }
+    
+    /**
+     * اپدیت محصول
+     */
+    public function update_product($product_id, $product_data) {
+        $endpoint = '/wp-json/wc/v3/products/' . intval($product_id);
+        return $this->request('PUT', $endpoint, $product_data);
     }
     
     /**

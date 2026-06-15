@@ -237,6 +237,7 @@ class Inventory_Sync_Manager {
     
     /**
      * انتقال محصول به‌همراه دسته‌بندی‌ها و ویژگی‌ها
+     * بهینه‌شده برای سرعت و مدیریت خطاهای SKU تکراری
      */
     public function transfer_product($site1_product_id, $site2_product_id = null) {
         // دریافت محصول از سایت 1
@@ -246,12 +247,24 @@ class Inventory_Sync_Manager {
             return $product1;
         }
         
+        $product_name = $product1['name'] ?? '';
+        $product_sku = $product1['sku'] ?? '';
+        
+        // چک کن: آیا محصول با این SKU در سایت 2 موجود است؟
+        if (!empty($product_sku)) {
+            $existing = $this->site2_api->get_product_by_sku($product_sku);
+            if (!is_wp_error($existing) && $existing) {
+                // محصول موجود است - آپدیت کن به‌جای ایجاد جدید
+                return $this->update_existing_product($existing['id'], $product1);
+            }
+        }
+        
         // ۱. انتقال دسته‌بندی‌ها (مادر و فرزند)
         $sync_result = $this->sync_categories($product1);
         if (is_wp_error($sync_result)) {
             Inventory_Sync_Database::insert_log(
                 $site1_product_id,
-                $product1['name'] ?? '',
+                $product_name,
                 'transfer_categories',
                 'سایت 1',
                 'سایت 2',
@@ -268,7 +281,7 @@ class Inventory_Sync_Manager {
         if (is_wp_error($sync_result)) {
             Inventory_Sync_Database::insert_log(
                 $site1_product_id,
-                $product1['name'] ?? '',
+                $product_name,
                 'transfer_attributes',
                 'سایت 1',
                 'سایت 2',
@@ -285,9 +298,21 @@ class Inventory_Sync_Manager {
         $result = $this->site2_api->create_product($product_data);
         
         if (is_wp_error($result)) {
+            // اگر خطای SKU تکراری بود
+            if (strpos($result->get_error_message(), 'already present') !== false) {
+                // دوباره جستجو کن
+                $sku = $product_data['sku'] ?? '';
+                if (!empty($sku)) {
+                    $existing = $this->site2_api->get_product_by_sku($sku);
+                    if (!is_wp_error($existing) && $existing) {
+                        return $this->update_existing_product($existing['id'], $product1);
+                    }
+                }
+            }
+            
             Inventory_Sync_Database::insert_log(
                 $site1_product_id,
-                $product1['name'] ?? '',
+                $product_name,
                 'transfer_product',
                 'سایت 1',
                 'سایت 2',
@@ -350,6 +375,73 @@ class Inventory_Sync_Manager {
     }
     
     /**
+     * اپدیت محصول موجود (هنگام SKU تکراری)
+     */
+    private function update_existing_product($site2_product_id, $product1) {
+        $product_name = $product1['name'] ?? '';
+        $site1_product_id = $product1['id'];
+        
+        // اپدیت فقط موارد ضروری (نام، قیمت، موجودی)
+        $update_data = [
+            'name' => $product_name,
+            'regular_price' => $product1['regular_price'] ?? '',
+            'sale_price' => $product1['sale_price'] ?? '',
+            'stock_quantity' => intval($product1['stock_quantity'] ?? 0),
+            'manage_stock' => true
+        ];
+        
+        $result = $this->site2_api->update_product($site2_product_id, $update_data);
+        
+        if (is_wp_error($result)) {
+            Inventory_Sync_Database::insert_log(
+                $site1_product_id,
+                $product_name,
+                'update_product',
+                'سایت 1',
+                'سایت 2',
+                '',
+                '',
+                'failed',
+                'خطا در اپدیت محصول: ' . $result->get_error_message()
+            );
+            return $result;
+        }
+        
+        // ذخیره نقشه‌برداری
+        $mapping_id = $this->save_mapping(
+            $site1_product_id,
+            $site2_product_id,
+            $product1['sku'] ?? '',
+            $result['sku'] ?? ''
+        );
+        
+        // علامت‌گذاری محصول
+        $this->site1_api->update_product_meta($site1_product_id, '_inventory_sync_transferred', [
+            'transferred' => true,
+            'transferred_to' => $site2_product_id,
+            'site2_url' => Inventory_Sync_Settings::get_site2_url(),
+            'transferred_at' => current_time('mysql'),
+            'mapping_id' => $mapping_id,
+            'updated_existing' => true
+        ]);
+        
+        // لاگ موفقیت
+        Inventory_Sync_Database::insert_log(
+            $site1_product_id,
+            $product_name,
+            'update_product',
+            'سایت 1',
+            'سایت 2',
+            '',
+            $site2_product_id,
+            'success',
+            'محصول موجود اپدیت شد'
+        );
+        
+        return $result;
+    }
+    
+    /**
      * انتقال دسته‌بندی‌های محصول (مادر و فرزند)
      * استفاده از Category Helper برای انتقال صحیح سلسله‌مراتب
      */
@@ -377,12 +469,55 @@ class Inventory_Sync_Manager {
     }
     
     /**
-     * انتقال ویژگی‌های محصول و مقادیرشان
+     * انتقال متغیّرهای یک محصول (بهینه‌شده برای سرعت)
+     * استفاده از batch API برای ایجاد چند متغیّر در یک درخواست
+     */
+    public function transfer_variations($site1_parent_id, $site2_parent_id, $product_name) {
+        // دریافت تمام متغیّرها از سایت 1
+        $all_variations = $this->site1_api->get_variations($site1_parent_id);
+        
+        if (is_wp_error($all_variations)) {
+            return $all_variations;
+        }
+        
+        if (empty($all_variations)) {
+            return true;
+        }
+        
+        // تقسیم متغیّرها به بسته‌های کوچک‌تر (50 متغیّر در هر بسته)
+        // برای جلوگیری از timeout
+        $batch_size = 50;
+        $variations_chunks = array_chunk($all_variations, $batch_size);
+        
+        foreach ($variations_chunks as $chunk) {
+            // آماده‌سازی داده‌های این بسته
+            $variations_to_create = [];
+            foreach ($chunk as $variation) {
+                $variations_to_create[] = $this->prepare_variation_data($variation);
+            }
+            
+            // ارسال بسته برای ایجاد گروهی
+            $batch_result = $this->site2_api->batch_create_variations($site2_parent_id, $variations_to_create);
+            
+            if (is_wp_error($batch_result)) {
+                return $batch_result;
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
+     * انتقال ویژگی‌های محصول و مقادیرشان (بهینه‌شده)
      */
     private function sync_attributes($product1) {
         if (empty($product1['attributes']) || !is_array($product1['attributes'])) {
             return true;
         }
+        
+        // ساخت کش برای ویژگی‌ها تا از چند درخواست جلوگیری کنیم
+        static $attributes_cache = [];
+        static $terms_cache = [];
         
         foreach ($product1['attributes'] as $attribute) {
             $attr_name = $attribute['name'] ?? '';
@@ -390,25 +525,43 @@ class Inventory_Sync_Manager {
                 continue;
             }
             
-            // چک کن که ویژگی در سایت 2 موجود است یا نه
-            $existing_attr = $this->site2_api->get_attribute_by_name($attr_name);
-            
-            if (!$existing_attr) {
-                // ایجاد ویژگی
-                $create_result = $this->site2_api->create_attribute($attr_name);
-                if (is_wp_error($create_result)) {
-                    return $create_result;
-                }
-                $attr_id = $create_result['id'];
+            // بررسی کش
+            if (isset($attributes_cache[$attr_name])) {
+                $attr_id = $attributes_cache[$attr_name];
             } else {
-                $attr_id = $existing_attr['id'];
+                // چک کن که ویژگی در سایت 2 موجود است یا نه
+                $existing_attr = $this->site2_api->get_attribute_by_name($attr_name);
+                
+                if (!$existing_attr) {
+                    // ایجاد ویژگی
+                    $create_result = $this->site2_api->create_attribute($attr_name);
+                    if (is_wp_error($create_result)) {
+                        return $create_result;
+                    }
+                    $attr_id = $create_result['id'];
+                } else {
+                    $attr_id = $existing_attr['id'];
+                }
+                
+                // ذخیره در کش
+                $attributes_cache[$attr_name] = $attr_id;
             }
             
             // انتقال مقادیر ویژگی (options)
             if (!empty($attribute['options']) && is_array($attribute['options'])) {
+                $cache_key = "attr_{$attr_id}";
+                if (!isset($terms_cache[$cache_key])) {
+                    $terms_cache[$cache_key] = [];
+                }
+                
                 foreach ($attribute['options'] as $option) {
                     $option_name = trim($option);
                     if (empty($option_name)) {
+                        continue;
+                    }
+                    
+                    // بررسی کش برای این مقدار
+                    if (in_array($option_name, $terms_cache[$cache_key])) {
                         continue;
                     }
                     
@@ -419,10 +572,12 @@ class Inventory_Sync_Manager {
                         // ایجاد مقدار
                         $term_result = $this->site2_api->create_attribute_term($attr_id, $option_name);
                         if (is_wp_error($term_result)) {
-                            // اگر یک مقدار مشکل داشت، ادامه دهیم
                             continue;
                         }
                     }
+                    
+                    // اضافه کن به کش
+                    $terms_cache[$cache_key][] = $option_name;
                 }
             }
         }
