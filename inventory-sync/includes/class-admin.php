@@ -26,6 +26,9 @@ class Inventory_Sync_Admin {
         // Mapping handlers
         add_action('wp_ajax_inventory_sync_get_mappings', [$this, 'ajax_get_mappings']);
         add_action('wp_ajax_inventory_sync_sync_all', [$this, 'ajax_sync_all']);
+        add_action('wp_ajax_inventory_sync_sync_single', [$this, 'ajax_sync_single']);
+        add_action('wp_ajax_inventory_sync_toggle_mapping', [$this, 'ajax_toggle_mapping']);
+        add_action('wp_ajax_inventory_sync_delete_mapping', [$this, 'ajax_delete_mapping']);
     }
     
     public function add_menu() {
@@ -294,7 +297,7 @@ class Inventory_Sync_Admin {
         check_ajax_referer('inventory_sync_nonce');
         
         if (!current_user_can('manage_woocommerce')) {
-            wp_send_json_error('رسائی نہیں');
+            wp_send_json_error('رسائی نہیں - صلاحیات کافی نہیں');
         }
         
         global $wpdb;
@@ -337,6 +340,75 @@ class Inventory_Sync_Admin {
             $sync_manager->sync_inventory($m->id);
         }
         
-        wp_send_json_success('تمام mappings ہماہنگ ہو گئے');
+    /**
+     * ایک mapping کو ہماہنگ کریں
+     */
+    public function ajax_sync_single() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('رسائی نہیں');
+        }
+        
+        $mapping_id = intval($_POST['mapping_id'] ?? 0);
+        $sync_manager = Inventory_Sync_Manager::get_instance();
+        
+        if ($sync_manager->sync_inventory($mapping_id)) {
+            wp_send_json_success('ہماہنگ ہو گیا');
+        } else {
+            wp_send_json_error('خرابی');
+        }
+    }
+    
+    /**
+     * Mapping کو toggle کریں (فعال/غیر فعال)
+     */
+    public function ajax_toggle_mapping() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('رسائی نہیں');
+        }
+        
+        global $wpdb;
+        $mapping_id = intval($_POST['mapping_id'] ?? 0);
+        $enabled = intval($_POST['enabled'] ?? 0);
+        
+        $result = $wpdb->update(
+            $wpdb->prefix . 'inventory_sync_mapping',
+            ['sync_enabled' => $enabled],
+            ['id' => $mapping_id]
+        );
+        
+        if ($result !== false) {
+            wp_send_json_success('بہتر بنایا گیا');
+        } else {
+            wp_send_json_error('خرابی');
+        }
+    }
+    
+    /**
+     * Mapping کو حذف کریں
+     */
+    public function ajax_delete_mapping() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('رسائی نہیں');
+        }
+        
+        global $wpdb;
+        $mapping_id = intval($_POST['mapping_id'] ?? 0);
+        
+        $result = $wpdb->delete(
+            $wpdb->prefix . 'inventory_sync_mapping',
+            ['id' => $mapping_id]
+        );
+        
+        if ($result) {
+            wp_send_json_success('حذف ہو گیا');
+        } else {
+            wp_send_json_error('خرابی');
+        }
     }
 }

@@ -19,12 +19,16 @@
             $(document).on('click', '.test-btn', this.testConnection.bind(this));
             $(document).on('click', '.save-settings-btn', this.saveSettings.bind(this));
             
-            // Mapping
+            // Mapping Events
             $(document).on('click', '.sync-all-btn', this.syncAllInventory.bind(this));
             $(document).on('click', '.refresh-mappings', this.loadMappings.bind(this));
-            $(document).on('click', '.product-item', this.selectProduct.bind(this));
+            $(document).on('click', '.add-new-mapping-btn', this.showAddMappingModal.bind(this));
+            $(document).on('click', '.sync-mapping-btn', this.syncSingleMapping.bind(this));
+            $(document).on('click', '.toggle-mapping-btn', this.toggleMappingStatus.bind(this));
+            $(document).on('click', '.delete-mapping-btn', this.deleteMapping.bind(this));
+            $(document).on('keyup', '#mapping-search-box', this.searchMappings.bind(this));
             
-            // Transfer
+            // Product Transfer
             $(document).on('click', '#select-all-transfer', this.toggleSelectAll.bind(this));
             $(document).on('click', '.select-product', this.handleSelectProduct.bind(this));
             $(document).on('click', '.transfer-selected-btn', this.transferSelected.bind(this));
@@ -475,11 +479,15 @@
                 success: (response) => {
                     if (response.success) {
                         this.renderMappings(response.data);
+                    } else {
+                        $('.mappings-list').html(
+                            '<tr><td colspan="7" style="text-align: center; color: red;">خرابی: ' + (response.data || 'نامعلوم') + '</td></tr>'
+                        );
                     }
                 },
-                error: () => {
+                error: (xhr, status, error) => {
                     $('.mappings-list').html(
-                        '<tr><td colspan="7" style="text-align: center; color: red;">خرابی: mappings لوڈ نہیں ہو سکے</td></tr>'
+                        '<tr><td colspan="7" style="text-align: center; color: red;">خرابی: AJAX ناکام - ' + error + '</td></tr>'
                     );
                 }
             });
@@ -488,38 +496,67 @@
         renderMappings: function(mappings) {
             if (!mappings || mappings.length === 0) {
                 $('.mappings-list').html(
-                    '<tr><td colspan="7" style="text-align: center; padding: 20px;">کوئی mapping نہیں</td></tr>'
+                    '<tr><td colspan="7" style="text-align: center; padding: 40px; color: #999;">' +
+                    '<strong>کوئی mapping موجود نیست</strong><br>' +
+                    '➕ بالا کلیک کنید تا جدید ایجاد کنیں' +
+                    '</td></tr>'
                 );
+                $('#total-mappings').text('0');
+                $('#active-mappings').text('0');
+                $('#inactive-mappings').text('0');
                 return;
             }
             
             let html = '';
+            let activeCount = 0;
+            let inactiveCount = 0;
+            
             mappings.forEach(m => {
-                const statusIcon = m.sync_enabled ? '✓' : '○';
-                const site1Name = m.site1_name || '<em>حذف شدہ</em>';
-                const site2Name = m.site2_name || '<em>حذف شدہ</em>';
+                if (m.sync_enabled) activeCount++;
+                else inactiveCount++;
+                
+                const statusIcon = m.sync_enabled ? '✅' : '⏹️';
+                const site1Name = m.site1_name || '<em style="color: #999;">نامعلوم</em>';
+                const site2Name = m.site2_name || '<em style="color: #999;">نامعلوم</em>';
+                const site1Stock = m.site1_stock || 0;
+                const site2Stock = m.site2_stock || 0;
+                
+                const stockColorSite1 = site1Stock > 0 ? '#28a745' : '#dc3545';
+                const stockColorSite2 = site2Stock > 0 ? '#28a745' : '#dc3545';
                 
                 html += `
-                    <tr>
-                        <td style="text-align: center;">${statusIcon}</td>
-                        <td><strong>${site1Name}</strong><br><small style="color: #999;">SKU: ${m.site1_sku || '-'}</small></td>
-                        <td style="text-align: center; font-weight: bold;">${m.site1_stock || 0}</td>
-                        <td style="text-align: center; color: #2271b1;">↔</td>
-                        <td><strong>${site2Name}</strong><br><small style="color: #999;">SKU: ${m.site2_sku || '-'}</small></td>
-                        <td style="text-align: center; font-weight: bold;">${m.site2_stock || 0}</td>
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="text-align: center; font-size: 18px;">${statusIcon}</td>
                         <td>
-                            <button class="button button-small sync-mapping" data-id="${m.id}" title="ہماہنگ کریں">🔄</button>
-                            <button class="button button-small toggle-mapping" data-id="${m.id}" data-enabled="${m.sync_enabled ? 1 : 0}" title="${m.sync_enabled ? 'غیر فعال' : 'فعال'} کریں">${m.sync_enabled ? '⏹' : '▶'}</button>
+                            <strong>${site1Name}</strong>
+                            ${m.site1_sku ? '<br><small style="color: #999;">SKU: ' + m.site1_sku + '</small>' : ''}
+                        </td>
+                        <td style="text-align: center; font-weight: bold; color: ${stockColorSite1};">${site1Stock}</td>
+                        <td style="text-align: center; color: #0073aa; font-size: 16px;">↔️</td>
+                        <td>
+                            <strong>${site2Name}</strong>
+                            ${m.site2_sku ? '<br><small style="color: #999;">SKU: ' + m.site2_sku + '</small>' : ''}
+                        </td>
+                        <td style="text-align: center; font-weight: bold; color: ${stockColorSite2};">${site2Stock}</td>
+                        <td style="text-align: center;">
+                            <button class="button button-small sync-mapping-btn" data-id="${m.id}" title="ہماہنگ کریں" style="margin: 2px;">🔄</button>
+                            <button class="button button-small toggle-mapping-btn" data-id="${m.id}" data-enabled="${m.sync_enabled ? 1 : 0}" title="${m.sync_enabled ? 'غیر فعال' : 'فعال'} کریں" style="margin: 2px;">${m.sync_enabled ? '⏸️' : '▶️'}</button>
+                            <button class="button button-small delete-mapping-btn" data-id="${m.id}" title="حذف کریں" style="margin: 2px; color: #dc3545;">🗑️</button>
                         </td>
                     </tr>
                 `;
             });
             
             $('.mappings-list').html(html);
+            $('#total-mappings').text(mappings.length);
+            $('#active-mappings').text(activeCount);
+            $('#inactive-mappings').text(inactiveCount);
         },
         
         syncAllInventory: function(e) {
             if (e) e.preventDefault();
+            
+            if (!confirm('تمام mappings کو هماهنگ کریں؟')) return;
             
             $.ajax({
                 url: inventorySyncData.ajaxurl,
@@ -530,11 +567,108 @@
                 },
                 success: (response) => {
                     if (response.success) {
-                        alert('همه mappings ہماہنگ ہو گئے!');
+                        alert('✅ تمام mappings هماهنگ ہو گئے!');
+                        this.loadMappings();
+                    }
+                },
+                error: (xhr) => {
+                    alert('❌ خرابی رخ دی');
+                }
+            });
+        },
+        
+        syncSingleMapping: function(e) {
+            e.preventDefault();
+            const mappingId = $(e.target).closest('button').data('id');
+            const $btn = $(e.target).closest('button');
+            
+            $btn.prop('disabled', true).text('⏳');
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_sync_single',
+                    nonce: inventorySyncData.nonce,
+                    mapping_id: mappingId
+                },
+                success: (response) => {
+                    if (response.success) {
+                        this.loadMappings();
+                    }
+                },
+                error: () => {
+                    alert('❌ خرابی');
+                },
+                complete: () => {
+                    $btn.prop('disabled', false).text('🔄');
+                }
+            });
+        },
+        
+        toggleMappingStatus: function(e) {
+            e.preventDefault();
+            const $btn = $(e.target).closest('button');
+            const mappingId = $btn.data('id');
+            const isEnabled = $btn.data('enabled');
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_toggle_mapping',
+                    nonce: inventorySyncData.nonce,
+                    mapping_id: mappingId,
+                    enabled: isEnabled ? 0 : 1
+                },
+                success: (response) => {
+                    if (response.success) {
                         this.loadMappings();
                     }
                 }
             });
+        },
+        
+        deleteMapping: function(e) {
+            e.preventDefault();
+            if (!confirm('کیا یقینی ہیں؟ یہ mapping حذف ہوگی')) return;
+            
+            const mappingId = $(e.target).closest('button').data('id');
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_delete_mapping',
+                    nonce: inventorySyncData.nonce,
+                    mapping_id: mappingId
+                },
+                success: (response) => {
+                    if (response.success) {
+                        alert('✅ حذف ہو گیا');
+                        this.loadMappings();
+                    }
+                }
+            });
+        },
+        
+        searchMappings: function(e) {
+            const searchText = $(e.target).val().toLowerCase();
+            if (!searchText) {
+                this.loadMappings();
+                return;
+            }
+            
+            $('.mappings-list tr').each(function() {
+                const row = $(this);
+                const text = row.text().toLowerCase();
+                row.toggle(text.includes(searchText));
+            });
+        },
+        
+        showAddMappingModal: function(e) {
+            e.preventDefault();
+            alert('⚠️ ابھی یہ خصوصیت تیار نہیں۔\n\nآپ براہ راست WooCommerce میں جا کر mapping ڈیٹا بیس میں ڈال سکتے ہیں۔\n\nیا ہمسے رابطہ کریں۔');
         }
     };
     
