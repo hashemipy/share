@@ -19,10 +19,13 @@ class Inventory_Sync_Database {
             last_sync DATETIME,
             sync_status ENUM('pending', 'synced', 'error') DEFAULT 'pending',
             error_message LONGTEXT,
+            transferred BOOLEAN DEFAULT 0,
+            transfer_verified BOOLEAN DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             UNIQUE KEY unique_mapping (site1_product_id, site2_product_id),
             INDEX idx_status (sync_status),
+            INDEX idx_transferred (transferred),
             INDEX idx_created (created_at)
         ) $charset_collate;";
         

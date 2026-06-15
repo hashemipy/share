@@ -48,7 +48,7 @@ class Inventory_Sync_API {
     }
     
     /**
-     * به‌روزرسانی موجودی
+     * اپدیت موجودی
      */
     public function update_product_stock($product_id, $stock) {
         $endpoint = '/wp-json/wc/v3/products/' . intval($product_id);
@@ -61,11 +61,178 @@ class Inventory_Sync_API {
     }
     
     /**
+     * اپدیت متا‌داده محصول برای علامت‌گذاری انتقال
+     */
+    public function update_product_meta($product_id, $meta_key, $meta_value) {
+        $endpoint = '/wp-json/wc/v3/products/' . intval($product_id);
+        $data = [
+            'meta_data' => [
+                [
+                    'key' => $meta_key,
+                    'value' => is_array($meta_value) ? wp_json_encode($meta_value) : $meta_value
+                ]
+            ]
+        ];
+        
+        return $this->request('PUT', $endpoint, $data);
+    }
+    
+    /**
      * ایجاد محصول
      */
     public function create_product($product_data) {
         $endpoint = '/wp-json/wc/v3/products';
         return $this->request('POST', $endpoint, $product_data);
+    }
+    
+    /**
+     * دریافت تمام دسته‌بندی‌ها
+     */
+    public function get_categories($per_page = 100, $page = 1) {
+        $endpoint = '/wp-json/wc/v3/products/categories';
+        $params = [
+            'per_page' => $per_page,
+            'page' => $page,
+            'orderby' => 'id',
+            'order' => 'asc',
+            'hide_empty' => false
+        ];
+        return $this->request('GET', $endpoint, [], $params);
+    }
+    
+    /**
+     * دریافت دسته‌بندی بر اساس نام
+     */
+    public function get_category_by_name($name) {
+        $endpoint = '/wp-json/wc/v3/products/categories';
+        $params = [
+            'search' => $name,
+            'per_page' => 100
+        ];
+        $categories = $this->request('GET', $endpoint, [], $params);
+        
+        if (is_wp_error($categories) || empty($categories)) {
+            return null;
+        }
+        
+        // جستجو برای تطابق دقیق
+        foreach ($categories as $category) {
+            if (strtolower($category['name']) === strtolower($name)) {
+                return $category;
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * ایجاد دسته‌بندی
+     */
+    public function create_category($name, $parent_id = 0) {
+        $endpoint = '/wp-json/wc/v3/products/categories';
+        $data = [
+            'name' => $name,
+            'parent' => intval($parent_id)
+        ];
+        return $this->request('POST', $endpoint, $data);
+    }
+    
+    /**
+     * دریافت تمام ویژگی‌ها (attributes)
+     */
+    public function get_attributes($per_page = 100, $page = 1) {
+        $endpoint = '/wp-json/wc/v3/products/attributes';
+        $params = [
+            'per_page' => $per_page,
+            'page' => $page
+        ];
+        return $this->request('GET', $endpoint, [], $params);
+    }
+    
+    /**
+     * دریافت ویژگی بر اساس نام
+     */
+    public function get_attribute_by_name($name) {
+        $endpoint = '/wp-json/wc/v3/products/attributes';
+        $params = [
+            'search' => $name,
+            'per_page' => 100
+        ];
+        $attributes = $this->request('GET', $endpoint, [], $params);
+        
+        if (is_wp_error($attributes) || empty($attributes)) {
+            return null;
+        }
+        
+        // جستجو برای تطابق دقیق
+        foreach ($attributes as $attribute) {
+            if (strtolower($attribute['name']) === strtolower($name)) {
+                return $attribute;
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * ایجاد ویژگی (attribute)
+     */
+    public function create_attribute($name) {
+        $endpoint = '/wp-json/wc/v3/products/attributes';
+        $data = [
+            'name' => $name,
+            'slug' => sanitize_title($name),
+            'type' => 'select',
+            'has_archives' => true
+        ];
+        return $this->request('POST', $endpoint, $data);
+    }
+    
+    /**
+     * دریافت مقادیر ویژگی (attribute terms)
+     */
+    public function get_attribute_terms($attribute_id) {
+        $endpoint = '/wp-json/wc/v3/products/attributes/' . intval($attribute_id) . '/terms';
+        $params = [
+            'per_page' => 100,
+            'hide_empty' => false
+        ];
+        return $this->request('GET', $endpoint, [], $params);
+    }
+    
+    /**
+     * دریافت مقدار ویژگی بر اساس نام
+     */
+    public function get_attribute_term_by_name($attribute_id, $name) {
+        $endpoint = '/wp-json/wc/v3/products/attributes/' . intval($attribute_id) . '/terms';
+        $params = [
+            'search' => $name,
+            'per_page' => 100
+        ];
+        $terms = $this->request('GET', $endpoint, [], $params);
+        
+        if (is_wp_error($terms) || empty($terms)) {
+            return null;
+        }
+        
+        foreach ($terms as $term) {
+            if (strtolower($term['name']) === strtolower($name)) {
+                return $term;
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * ایجاد مقدار ویژگی (attribute term)
+     */
+    public function create_attribute_term($attribute_id, $name) {
+        $endpoint = '/wp-json/wc/v3/products/attributes/' . intval($attribute_id) . '/terms';
+        $data = [
+            'name' => $name
+        ];
+        return $this->request('POST', $endpoint, $data);
     }
     
     /**

@@ -497,6 +497,47 @@
     color: #856404;
 }
 
+.status-badge.warning {
+    background: #fff3cd;
+    color: #856404;
+}
+
+/* Transfer Status Styling */
+.transfer-products input[type="checkbox"]:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.transfer-products tr {
+    transition: background-color 0.3s ease;
+}
+
+.transfer-products tbody tr:has(input:disabled) {
+    background: #f0f8ff;
+    opacity: 0.9;
+}
+
+/* Transferred Product Visual Indicator */
+.transferred-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    background: linear-gradient(135deg, #46b450 0%, #2ea141 100%);
+    color: white;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: bold;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+}
+
 /* Progress Bar */
 .progress-container {
     margin-top: 20px;

@@ -236,17 +236,51 @@ class Inventory_Sync_Manager {
     }
     
     /**
-     * انتقال محصول
+     * انتقال محصول به‌همراه دسته‌بندی‌ها و ویژگی‌ها
      */
     public function transfer_product($site1_product_id, $site2_product_id = null) {
-        // Get product from Site 1
+        // دریافت محصول از سایت 1
         $product1 = $this->site1_api->get_product($site1_product_id);
         
         if (is_wp_error($product1)) {
             return $product1;
         }
         
-        // ساخت محصول والد (ساده یا متغیّر)
+        // ۱. انتقال دسته‌بندی‌ها (مادر و فرزند)
+        $sync_result = $this->sync_categories($product1);
+        if (is_wp_error($sync_result)) {
+            Inventory_Sync_Database::insert_log(
+                $site1_product_id,
+                $product1['name'] ?? '',
+                'transfer_categories',
+                'سایت 1',
+                'سایت 2',
+                '',
+                '',
+                'failed',
+                'خطا در انتقال دسته‌بندی‌ها: ' . $sync_result->get_error_message()
+            );
+            return $sync_result;
+        }
+        
+        // ۲. انتقال ویژگی‌ها و مقادیرشان
+        $sync_result = $this->sync_attributes($product1);
+        if (is_wp_error($sync_result)) {
+            Inventory_Sync_Database::insert_log(
+                $site1_product_id,
+                $product1['name'] ?? '',
+                'transfer_attributes',
+                'سایت 1',
+                'سایت 2',
+                '',
+                '',
+                'failed',
+                'خطا در انتقال ویژگی‌ها: ' . $sync_result->get_error_message()
+            );
+            return $sync_result;
+        }
+        
+        // ۳. ساخت محصول والد
         $product_data = $this->prepare_transfer_data($product1);
         $result = $this->site2_api->create_product($product_data);
         
@@ -265,7 +299,7 @@ class Inventory_Sync_Manager {
             return $result;
         }
         
-        // اگر محصول متغیّر است، متغیّرها (variations) را هم منتقل کن
+        // ۴. اگر محصول متغیّر است، متغیّرها را هم منتقل کن
         if (($product1['type'] ?? 'simple') === 'variable') {
             $variation_result = $this->transfer_variations($site1_product_id, $result['id'], $product1['name'] ?? '');
             if (is_wp_error($variation_result)) {
@@ -283,15 +317,24 @@ class Inventory_Sync_Manager {
             }
         }
         
-        // Save mapping
-        $this->save_mapping(
+        // ۵. ذخیره نقشه‌برداری
+        $mapping_id = $this->save_mapping(
             $site1_product_id,
             $result['id'],
             $product1['sku'] ?? '',
             $result['sku'] ?? ''
         );
         
-        // Log success
+        // ۶. علامت‌گذاری محصول به‌عنوان منتقل‌شده
+        $meta_result = $this->site1_api->update_product_meta($site1_product_id, '_inventory_sync_transferred', [
+            'transferred' => true,
+            'transferred_to' => $result['id'],
+            'site2_url' => Inventory_Sync_Settings::get_site2_url(),
+            'transferred_at' => current_time('mysql'),
+            'mapping_id' => $mapping_id
+        ]);
+        
+        // لاگ موفقیت
         Inventory_Sync_Database::insert_log(
             $site1_product_id,
             $product1['name'] ?? '',
@@ -304,6 +347,87 @@ class Inventory_Sync_Manager {
         );
         
         return $result;
+    }
+    
+    /**
+     * انتقال دسته‌بندی‌های محصول (مادر و فرزند)
+     * استفاده از Category Helper برای انتقال صحیح سلسله‌مراتب
+     */
+    private function sync_categories($product1) {
+        if (empty($product1['categories']) || !is_array($product1['categories'])) {
+            return true;
+        }
+        
+        $category_helper = new Inventory_Sync_Category_Helper($this->site1_api, $this->site2_api);
+        
+        foreach ($product1['categories'] as $category) {
+            $cat_id = intval($category['id'] ?? 0);
+            if (empty($cat_id)) {
+                continue;
+            }
+            
+            // انتقال دسته‌بندی با سلسله‌مراتب کامل
+            $result = $category_helper->sync_category_with_hierarchy($cat_id);
+            if (is_wp_error($result)) {
+                return $result;
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
+     * انتقال ویژگی‌های محصول و مقادیرشان
+     */
+    private function sync_attributes($product1) {
+        if (empty($product1['attributes']) || !is_array($product1['attributes'])) {
+            return true;
+        }
+        
+        foreach ($product1['attributes'] as $attribute) {
+            $attr_name = $attribute['name'] ?? '';
+            if (empty($attr_name)) {
+                continue;
+            }
+            
+            // چک کن که ویژگی در سایت 2 موجود است یا نه
+            $existing_attr = $this->site2_api->get_attribute_by_name($attr_name);
+            
+            if (!$existing_attr) {
+                // ایجاد ویژگی
+                $create_result = $this->site2_api->create_attribute($attr_name);
+                if (is_wp_error($create_result)) {
+                    return $create_result;
+                }
+                $attr_id = $create_result['id'];
+            } else {
+                $attr_id = $existing_attr['id'];
+            }
+            
+            // انتقال مقادیر ویژگی (options)
+            if (!empty($attribute['options']) && is_array($attribute['options'])) {
+                foreach ($attribute['options'] as $option) {
+                    $option_name = trim($option);
+                    if (empty($option_name)) {
+                        continue;
+                    }
+                    
+                    // چک کن که مقدار در سایت 2 موجود است یا نه
+                    $existing_term = $this->site2_api->get_attribute_term_by_name($attr_id, $option_name);
+                    
+                    if (!$existing_term) {
+                        // ایجاد مقدار
+                        $term_result = $this->site2_api->create_attribute_term($attr_id, $option_name);
+                        if (is_wp_error($term_result)) {
+                            // اگر یک مقدار مشکل داشت، ادامه دهیم
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+        
+        return true;
     }
     
     /**
@@ -512,12 +636,12 @@ class Inventory_Sync_Manager {
     }
     
     /**
-     * ذخیره نقشه‌برداری
+     * ذخیره نقشه‌برداری و علامت‌گذاری محصول به‌عنوان منتقل‌شده
      */
     private function save_mapping($site1_id, $site2_id, $site1_sku, $site2_sku) {
         global $wpdb;
         
-        $wpdb->insert(
+        $result = $wpdb->insert(
             $wpdb->prefix . 'inventory_sync_mapping',
             [
                 'site1_product_id' => $site1_id,
@@ -525,8 +649,12 @@ class Inventory_Sync_Manager {
                 'site1_sku' => $site1_sku,
                 'site2_sku' => $site2_sku,
                 'sync_enabled' => 1,
-                'sync_status' => 'synced'
+                'sync_status' => 'synced',
+                'transferred' => 1,
+                'transfer_verified' => 0
             ]
         );
+        
+        return $wpdb->insert_id;
     }
 }

@@ -246,7 +246,7 @@
         renderTransferTable: function(products) {
             if (!products || products.length === 0) {
                 $('.transfer-products').html(
-                    '<tr><td colspan="5" class="text-center">' + 
+                    '<tr><td colspan="6" class="text-center">' + 
                     inventorySyncData.i18n.selectProducts + '</td></tr>'
                 );
                 return;
@@ -254,13 +254,23 @@
             
             let html = '';
             products.forEach(product => {
+                // بررسی اینکه محصول منتقل شده است یا نه
+                const transferred = product.meta_data && 
+                    product.meta_data.some(m => m.key === '_inventory_sync_transferred');
+                const statusBadge = transferred ? 
+                    '<span class="status-badge success">✓ منتقل شده</span>' : 
+                    '<span class="status-badge pending">📋 منتظر</span>';
+                
+                const isDisabled = transferred ? 'disabled' : '';
+                
                 html += `
                     <tr>
-                        <td><input type="checkbox" class="select-product" value="${product.id}"></td>
+                        <td><input type="checkbox" class="select-product" value="${product.id}" ${isDisabled}></td>
                         <td>${product.name}</td>
                         <td>${product.sku || 'N/A'}</td>
                         <td>${product.stock_quantity || 0}</td>
                         <td><span class="status-badge pending">📋 منتظر</span></td>
+                        <td>${statusBadge}</td>
                     </tr>
                 `;
             });
