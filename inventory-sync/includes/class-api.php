@@ -171,6 +171,56 @@ class Inventory_Sync_API {
     }
     
     /**
+     * بررسی اینکه آیا یک محصول با این SKU قبلاً موجود است
+     */
+    public function product_exists_by_sku($sku) {
+        if (empty($sku)) {
+            return false;
+        }
+        
+        $endpoint = '/wp-json/wc/v3/products';
+        $params = [
+            'sku' => $sku,
+            'per_page' => 1
+        ];
+        
+        $response = $this->request('GET', $endpoint, [], $params);
+        
+        if (is_wp_error($response) || empty($response)) {
+            return false;
+        }
+        
+        return is_array($response) && count($response) > 0 ? $response[0] : false;
+    }
+    
+    /**
+     * پیدا کردن محصول برای بروزرسانی
+     */
+    public function find_product_by_name($product_name) {
+        $endpoint = '/wp-json/wc/v3/products';
+        $params = [
+            'search' => $product_name,
+            'per_page' => 1
+        ];
+        
+        $response = $this->request('GET', $endpoint, [], $params);
+        
+        if (is_wp_error($response) || empty($response)) {
+            return false;
+        }
+        
+        return is_array($response) && count($response) > 0 ? $response[0] : false;
+    }
+    
+    /**
+     * بروزرسانی محصول
+     */
+    public function update_product($product_id, $product_data) {
+        $endpoint = '/wp-json/wc/v3/products/' . intval($product_id);
+        return $this->request('PUT', $endpoint, $product_data);
+    }
+    
+    /**
      * ارسال درخواست HTTP
      */
     private function request($method, $endpoint, $data = [], $params = []) {
