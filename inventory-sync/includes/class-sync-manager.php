@@ -14,6 +14,8 @@ class Inventory_Sync_Manager {
     private static $instance = null;
     private $site1_api;
     private $site2_api;
+    // کش ویژگی‌های سایت ۲ برای جلوگیری از فراخوانی مکرر API
+    private $site2_attributes_cache = null;
     
     public static function get_instance() {
         if (null === self::$instance) {
@@ -34,8 +36,55 @@ class Inventory_Sync_Manager {
         // وقتی سفارش کامل شود، موجودی را sync کن
         add_action('woocommerce_order_status_completed', [$this, 'sync_on_order'], 10, 1);
         
-        // وقتی موجودی دستی تغییر کند
+        // وقتی موجودی دستی تغییر کند (محصول ساده)
         add_action('woocommerce_product_set_stock', [$this, 'sync_on_stock_change'], 10, 1);
+        // وقتی موجودی یک واریاسیون تغییر کند
+        add_action('woocommerce_variation_set_stock', [$this, 'sync_on_stock_change'], 10, 1);
+        // وقتی محصول ذخیره/ویرایش شود (پوشش تغییرات دستی موجودی در ادمین)
+        add_action('woocommerce_update_product', [$this, 'sync_on_product_update'], 20, 1);
+        
+        // *** بسیار مهم: handler رویدادهای زمان‌بندی‌شده ***
+        // بدون این‌ها، sync خودکار هرگز اجرا نمی‌شد
+        add_action('inventory_sync_mapping', [$this, 'sync_inventory'], 10, 1);
+        add_action('inventory_sync_immediate', [$this, 'sync_all_mappings'], 10, 0);
+    }
+    
+    /**
+     * هنگام بروزرسانی/ذخیره محصول، اگر در mapping باشد sync کن
+     */
+    public function sync_on_product_update($product_id) {
+        if (!Inventory_Sync_Settings::get_auto_sync_enabled()) {
+            return;
+        }
+        
+        global $wpdb;
+        $mapping = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}inventory_sync_mapping 
+                 WHERE (site1_product_id = %d OR site2_product_id = %d) 
+                 AND sync_enabled = 1 LIMIT 1",
+                $product_id,
+                $product_id
+            )
+        );
+        
+        if ($mapping) {
+            wp_schedule_single_event(time() + 5, 'inventory_sync_mapping', [$mapping->id]);
+        }
+    }
+    
+    /**
+     * sync همه‌ی mappingهای فعال (handler رویداد فوری)
+     */
+    public function sync_all_mappings() {
+        global $wpdb;
+        $mappings = $wpdb->get_results(
+            "SELECT id FROM {$wpdb->prefix}inventory_sync_mapping WHERE sync_enabled = 1"
+        );
+        
+        foreach ($mappings as $m) {
+            $this->sync_inventory($m->id);
+        }
     }
     
     /**
@@ -55,10 +104,21 @@ class Inventory_Sync_Manager {
     
     /**
      * هنگام تغییر موجودی - تمام mapped محصولات را sync کن
+     * این متد هم برای محصول ساده و هم برای واریاسیون فراخوانی می‌شود
      */
     public function sync_on_stock_change($product) {
         if (!Inventory_Sync_Settings::get_auto_sync_enabled()) {
             return;
+        }
+        
+        if (!is_object($product) || !method_exists($product, 'get_id')) {
+            return;
+        }
+        
+        // اگر واریاسیون است، شناسه محصول والد را بگیر چون mapping بر اساس والد است
+        $product_id = $product->get_id();
+        if (method_exists($product, 'get_parent_id') && $product->get_parent_id()) {
+            $product_id = $product->get_parent_id();
         }
         
         global $wpdb;
@@ -69,8 +129,8 @@ class Inventory_Sync_Manager {
                 "SELECT * FROM {$wpdb->prefix}inventory_sync_mapping 
                  WHERE (site1_product_id = %d OR site2_product_id = %d) 
                  AND sync_enabled = 1 LIMIT 1",
-                $product->get_id(),
-                $product->get_id()
+                $product_id,
+                $product_id
             )
         );
         
@@ -190,6 +250,12 @@ class Inventory_Sync_Manager {
             return;
         }
         
+        // محصول متغیّر: موجودی روی واریاسیون‌هاست، نه والد
+        if (($product['type'] ?? 'simple') === 'variable') {
+            $this->sync_variable_stock($from_api, $to_api, $from_id, $to_id, $from_name, $to_name, $product['name'] ?? '');
+            return;
+        }
+        
         $stock = isset($product['stock_quantity']) ? intval($product['stock_quantity']) : 0;
         
         // اپدیت موجودی در سایت مقصد
@@ -233,6 +299,85 @@ class Inventory_Sync_Manager {
             $stock,
             'success'
         );
+    }
+    
+    /**
+     * هماهنگ‌سازی موجودی محصول متغیّر بر اساس تطابق SKU واریاسیون‌ها
+     */
+    private function sync_variable_stock($from_api, $to_api, $from_id, $to_id, $from_name, $to_name, $product_name) {
+        $from_variations = $this->fetch_all_variations($from_api, $from_id);
+        $to_variations   = $this->fetch_all_variations($to_api, $to_id);
+        
+        if (empty($from_variations) || empty($to_variations)) {
+            Inventory_Sync_Database::insert_log(
+                $from_id,
+                $product_name,
+                'sync_variable_stock',
+                $from_name,
+                $to_name,
+                '',
+                $to_id,
+                'failed',
+                'واریاسیونی برای هماهنگ‌سازی پیدا نشد'
+            );
+            return;
+        }
+        
+        // ایندکس واریاسیون‌های مقصد بر اساس SKU
+        $to_by_sku = [];
+        foreach ($to_variations as $v) {
+            if (!empty($v['sku'])) {
+                $to_by_sku[$v['sku']] = $v['id'];
+            }
+        }
+        
+        $synced = 0;
+        foreach ($from_variations as $v) {
+            $sku = $v['sku'] ?? '';
+            if ($sku === '' || !isset($to_by_sku[$sku])) {
+                continue;
+            }
+            
+            $stock = isset($v['stock_quantity']) ? intval($v['stock_quantity']) : 0;
+            $result = $to_api->update_variation_stock($to_id, $to_by_sku[$sku], $stock);
+            
+            if (!is_wp_error($result)) {
+                $synced++;
+            }
+        }
+        
+        Inventory_Sync_Database::insert_log(
+            $from_id,
+            $product_name,
+            'sync_variable_stock',
+            $from_name,
+            $to_name,
+            '',
+            $to_id,
+            'success',
+            "موجودی {$synced} واریاسیون هماهنگ شد"
+        );
+    }
+    
+    /**
+     * دریافت همه‌ی واریاسیون‌های یک محصول با صفحه‌بندی
+     */
+    private function fetch_all_variations($api, $product_id) {
+        $all = [];
+        $page = 1;
+        
+        do {
+            $variations = $api->get_product_variations($product_id, 100, $page);
+            
+            if (is_wp_error($variations) || empty($variations) || !is_array($variations)) {
+                break;
+            }
+            
+            $all = array_merge($all, $variations);
+            $page++;
+        } while (count($variations) === 100);
+        
+        return $all;
     }
     
     /**
@@ -612,59 +757,23 @@ class Inventory_Sync_Manager {
             return [];
         }
         
-        global $wpdb;
-        $category_attr_sync = new Inventory_Sync_Category_Attribute_Sync(
-            $this->site1_api,
-            $this->site2_api
-        );
-        
         $clean = [];
         foreach ($attributes as $attr) {
             $site1_attr_id = intval($attr['id'] ?? 0);
             $attr_name = $attr['name'] ?? '';
             $attr_option = $attr['option'] ?? '';
             
-            // اگر نام و مقدار خالی است، پاس کن
-            if (empty($attr_name) && empty($attr_option)) {
+            // مقدار (option) برای واریاسیون ضروری است
+            if ($attr_option === '' || (empty($attr_name) && $site1_attr_id <= 0)) {
                 continue;
             }
             
-            $site2_attr_id = null;
+            // از همان resolver والد استفاده می‌کنیم تا هویت ویژگی دقیقاً یکی باشد
+            // (در غیر این صورت ووکامرس واریاسیون را به والد متصل نمی‌کند)
+            $item = $this->resolve_attribute_identity($site1_attr_id, $attr_name);
+            $item['option'] = $attr_option;
             
-            // اگر ID موجود است، mapping کنی ببین
-            if ($site1_attr_id > 0) {
-                $mapping = Inventory_Sync_Database::get_attribute_mapping($site1_attr_id);
-                if ($mapping && !empty($mapping->site2_attribute_id)) {
-                    $site2_attr_id = intval($mapping->site2_attribute_id);
-                }
-            }
-            
-            // اگر mapping پیدا نشد، بر اساس نام ویژگی جستجو کن
-            if ($site2_attr_id === null && !empty($attr_name)) {
-                // از سایت 2 تمام ویژگی‌ها دریافت کن و نام را مقایسه کن
-                $site2_attributes = $this->site2_api->get_attributes();
-                if (!is_wp_error($site2_attributes) && is_array($site2_attributes)) {
-                    foreach ($site2_attributes as $site2_attr) {
-                        if (strtolower($site2_attr['name'] ?? '') === strtolower($attr_name)) {
-                            $site2_attr_id = intval($site2_attr['id']);
-                            break;
-                        }
-                    }
-                }
-            }
-            
-            // اگر هنوز ID پیدا نشده، از نام استفاده کن
-            if ($site2_attr_id === null) {
-                $site2_attr_id = $site1_attr_id; // آخرین تلاش: همان ID
-            }
-            
-            // ساختار ویژگی متغیّر
-            $attr_item = [
-                'id' => intval($site2_attr_id),
-                'option' => $attr_option
-            ];
-            
-            $clean[] = $attr_item;
+            $clean[] = $item;
         }
         
         return $clean;
@@ -722,9 +831,12 @@ class Inventory_Sync_Manager {
     }
     
     /**
-     * پاک‌سازی ویژگی‌های محصول والد:
-     * - حذف id ویژگی سایت مبدأ (id=0 یعنی ویژگی سفارشی محصول، در مقصد معتبر است)
-     * - حفظ options و فلگ‌های variation/visible
+     * آماده‌سازی ویژگی‌های محصول والد برای سایت مقصد.
+     * 
+     * بسیار مهم: هویت ویژگی والد باید دقیقاً با هویت ویژگی واریاسیون یکی باشد
+     * تا ووکامرس بتواند واریاسیون‌ها را به ویژگی والد متصل کند.
+     * - ویژگی گلوبال: با id (مپ‌شده به سایت ۲) ارسال می‌شود
+     * - ویژگی سفارشی: با name ارسال می‌شود
      */
     private function prepare_attributes($attributes) {
         if (empty($attributes) || ! is_array($attributes)) {
@@ -733,19 +845,63 @@ class Inventory_Sync_Manager {
         
         $clean = [];
         foreach ($attributes as $attr) {
-            if (empty($attr['name'])) {
+            $name = $attr['name'] ?? '';
+            $site1_id = intval($attr['id'] ?? 0);
+            
+            if (empty($name) && $site1_id <= 0) {
                 continue;
             }
-            $clean[] = [
-                'name'      => $attr['name'],
-                'position'  => isset($attr['position']) ? intval($attr['position']) : 0,
-                'visible'   => isset($attr['visible']) ? (bool) $attr['visible'] : true,
-                'variation' => isset($attr['variation']) ? (bool) $attr['variation'] : false,
-                'options'   => $attr['options'] ?? [],
-            ];
+            
+            // هویت ویژگی در سایت ۲ (id برای گلوبال، name برای سفارشی)
+            $item = $this->resolve_attribute_identity($site1_id, $name);
+            
+            $item['position']  = isset($attr['position']) ? intval($attr['position']) : 0;
+            $item['visible']   = isset($attr['visible']) ? (bool) $attr['visible'] : true;
+            $item['variation'] = isset($attr['variation']) ? (bool) $attr['variation'] : false;
+            $item['options']   = $attr['options'] ?? [];
+            
+            $clean[] = $item;
         }
         
         return $clean;
+    }
+    
+    /**
+     * تعیین هویت یک ویژگی در سایت مقصد بر اساس ویژگی سایت مبدأ.
+     * 
+     * @param int    $site1_attr_id شناسه ویژگی در سایت ۱ (۰ یعنی سفارشی)
+     * @param string $attr_name      نام ویژگی
+     * @return array  ['id' => int]  برای ویژگی گلوبال، یا ['name' => string] برای سفارشی
+     */
+    private function resolve_attribute_identity($site1_attr_id, $attr_name) {
+        $site1_attr_id = intval($site1_attr_id);
+        
+        // ویژگی سفارشی (بدون taxonomy گلوبال)
+        if ($site1_attr_id <= 0) {
+            return ['name' => $attr_name];
+        }
+        
+        // ۱) جستجو در جدول mapping (سریع‌ترین راه)
+        $mapping = Inventory_Sync_Database::get_attribute_mapping($site1_attr_id);
+        if ($mapping && !empty($mapping->site2_attribute_id)) {
+            return ['id' => intval($mapping->site2_attribute_id)];
+        }
+        
+        // ۲) جستجو بر اساس نام در ویژگی‌های سایت ۲ (با کش)
+        if (!empty($attr_name)) {
+            if ($this->site2_attributes_cache === null) {
+                $attrs = $this->site2_api->get_attributes();
+                $this->site2_attributes_cache = (!is_wp_error($attrs) && is_array($attrs)) ? $attrs : [];
+            }
+            foreach ($this->site2_attributes_cache as $a) {
+                if (strtolower($a['name'] ?? '') === strtolower($attr_name)) {
+                    return ['id' => intval($a['id'])];
+                }
+            }
+        }
+        
+        // ۳) در نهایت به‌صورت ویژگی سفارشی با نام
+        return ['name' => $attr_name];
     }
     
     /**

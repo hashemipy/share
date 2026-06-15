@@ -25,6 +25,11 @@ class Inventory_Sync_Plugin {
             Inventory_Sync_Admin::get_instance();
         }
         
+        // ساخت Sync Manager در هر درخواست تا hookهای تغییر موجودی و رویدادهای
+        // زمان‌بندی‌شده (inventory_sync_mapping / inventory_sync_immediate) ثبت شوند.
+        // بدون این، sync خودکار موجودی هرگز اجرا نمی‌شد.
+        Inventory_Sync_Manager::get_instance();
+        
         // Hooks
         add_action('woocommerce_reduce_order_stock', [$this, 'on_product_sold']);
         add_action('inventory_sync_cron_hook', [$this, 'run_scheduled_sync']);

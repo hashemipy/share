@@ -221,6 +221,19 @@ class Inventory_Sync_API {
     }
     
     /**
+     * بروزرسانی موجودی یک واریاسیون
+     */
+    public function update_variation_stock($product_id, $variation_id, $stock) {
+        $endpoint = '/wp-json/wc/v3/products/' . intval($product_id) . '/variations/' . intval($variation_id);
+        $data = [
+            'stock_quantity' => intval($stock),
+            'manage_stock' => true
+        ];
+        
+        return $this->request('PUT', $endpoint, $data);
+    }
+    
+    /**
      * ارسال درخواست HTTP
      */
     private function request($method, $endpoint, $data = [], $params = []) {
