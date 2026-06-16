@@ -19,6 +19,13 @@ class Inventory_Sync_Plugin {
         require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-category-attribute-sync.php';
         require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-sync-manager.php';
         
+        // New Classes for Inventory Linking
+        require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-product-mapper.php';
+        require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-queue-manager.php';
+        require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-log-manager.php';
+        require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-sync-engine.php';
+        require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-wc-hooks.php';
+        
         // Admin
         if (is_admin()) {
             require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-admin.php';
