@@ -40,6 +40,55 @@ class Inventory_Sync_API {
     }
     
     /**
+     * جستجو محصولات بر اساس نام
+     */
+    public function search_products($search_query) {
+        $endpoint = '/wp-json/wc/v3/products';
+        $params = [
+            'search' => $search_query,
+            'per_page' => 20
+        ];
+        
+        $products = $this->request('GET', $endpoint, [], $params);
+        
+        if (is_wp_error($products)) {
+            return [];
+        }
+        
+        // فرمت کردن محصولات برای نمایش در dropdown
+        $formatted = [];
+        if (is_array($products)) {
+            foreach ($products as $product) {
+                $formatted[] = [
+                    'id' => $product['id'],
+                    'name' => $product['name'],
+                    'stock' => $product['stock_quantity'] ?? 0,
+                    'variant_id' => null,
+                    'variant_name' => null
+                ];
+                
+                // اگر محصول متغیر است، متغیرها را نیز اضافه کن
+                if ($product['type'] === 'variable') {
+                    $variations = $this->get_product_variations($product['id']);
+                    if (!is_wp_error($variations) && is_array($variations)) {
+                        foreach ($variations as $variant) {
+                            $formatted[] = [
+                                'id' => $product['id'],
+                                'name' => $product['name'],
+                                'stock' => $variant['stock_quantity'] ?? 0,
+                                'variant_id' => $variant['id'],
+                                'variant_name' => $variant['attributes'][0]['option'] ?? 'متغیر'
+                            ];
+                        }
+                    }
+                }
+            }
+        }
+        
+        return $formatted;
+    }
+    
+    /**
      * دریافت یک محصول
      */
     public function get_product($product_id) {

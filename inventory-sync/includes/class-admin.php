@@ -243,6 +243,48 @@ class Inventory_Sync_Admin {
     // ===== جدید: AJAX Handlers برای مرتبط‌سازی موجودی =====
     
     /**
+     * جستجو محصولات
+     */
+    public function ajax_search_products() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('عدم دسترسی');
+        }
+        
+        $site = sanitize_text_field($_POST['site'] ?? '');
+        $query = sanitize_text_field($_POST['query'] ?? '');
+        
+        if (empty($query) || strlen($query) < 2) {
+            wp_send_json_error('حداقل 2 کاراکتر برای جستجو الزامی است');
+        }
+        
+        if ($site === 'site1') {
+            $api = new Inventory_Sync_API(
+                Inventory_Sync_Settings::get_site1_url(),
+                Inventory_Sync_Settings::get_site1_key(),
+                Inventory_Sync_Settings::get_site1_secret()
+            );
+        } elseif ($site === 'site2') {
+            $api = new Inventory_Sync_API(
+                Inventory_Sync_Settings::get_site2_url(),
+                Inventory_Sync_Settings::get_site2_key(),
+                Inventory_Sync_Settings::get_site2_secret()
+            );
+        } else {
+            wp_send_json_error('سایت نامعتبر');
+        }
+        
+        $products = $api->search_products($query);
+        
+        if (is_wp_error($products)) {
+            wp_send_json_error($products->get_error_message());
+        }
+        
+        wp_send_json_success($products);
+    }
+    
+    /**
      * ایجاد ارتباط بین دو محصول
      */
     public function ajax_create_mapping() {

@@ -306,7 +306,7 @@ if (!defined('ABSPATH')) exit;
                     </tr>
                 </thead>
                 <tbody id="linked-products-tbody">
-                    <tr><td colspan="7" style="text-align: center;">{{ esc_html_e('بارگذاری...', 'inventory-sync'); }}</td></tr>
+                    <tr><td colspan="7" style="text-align: center;"><?php esc_html_e('بارگذاری...', 'inventory-sync'); ?></td></tr>
                 </tbody>
             </table>
             
@@ -328,16 +328,16 @@ if (!defined('ABSPATH')) exit;
             
             <div class="logs-toolbar">
                 <select id="logs-status-filter" class="form-control">
-                    <option value="">{{ esc_html_e('تمام وضعیت‌ها', 'inventory-sync'); }}</option>
-                    <option value="pending">{{ esc_html_e('در انتظار', 'inventory-sync'); }}</option>
-                    <option value="success">{{ esc_html_e('موفق', 'inventory-sync'); }}</option>
-                    <option value="failed">{{ esc_html_e('ناموفق', 'inventory-sync'); }}</option>
+                    <option value=""><?php esc_html_e('تمام وضعیت‌ها', 'inventory-sync'); ?></option>
+                    <option value="pending"><?php esc_html_e('در انتظار', 'inventory-sync'); ?></option>
+                    <option value="success"><?php esc_html_e('موفق', 'inventory-sync'); ?></option>
+                    <option value="failed"><?php esc_html_e('ناموفق', 'inventory-sync'); ?></option>
                 </select>
                 
                 <select id="logs-site-filter" class="form-control">
-                    <option value="">{{ esc_html_e('تمام سایت‌ها', 'inventory-sync'); }}</option>
-                    <option value="1">{{ esc_html_e('سایت 1', 'inventory-sync'); }}</option>
-                    <option value="2">{{ esc_html_e('سایت 2', 'inventory-sync'); }}</option>
+                    <option value=""><?php esc_html_e('تمام سایت‌ها', 'inventory-sync'); ?></option>
+                    <option value="1"><?php esc_html_e('سایت 1', 'inventory-sync'); ?></option>
+                    <option value="2"><?php esc_html_e('سایت 2', 'inventory-sync'); ?></option>
                 </select>
                 
                 <button class="button" id="refresh-logs-btn">
@@ -359,7 +359,7 @@ if (!defined('ABSPATH')) exit;
                     </tr>
                 </thead>
                 <tbody id="logs-tbody">
-                    <tr><td colspan="8" style="text-align: center;">{{ esc_html_e('بارگذاری...', 'inventory-sync'); }}</td></tr>
+                    <tr><td colspan="8" style="text-align: center;"><?php esc_html_e('بارگذاری...', 'inventory-sync'); ?></td></tr>
                 </tbody>
             </table>
             

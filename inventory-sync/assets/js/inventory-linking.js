@@ -3,477 +3,468 @@
  * مدیریت مرتبط‌سازی و لاگ‌های موجودی
  */
 
-class InventoryLinkingManager {
-    constructor() {
-        this.currentMappingPage = 1;
-        this.currentLogsPage = 1;
-        this.selectedSite1Product = null;
-        this.selectedSite2Product = null;
-        
-        this.init();
-    }
+(function($) {
+    'use strict';
     
-    init() {
-        this.bindProductLinking();
-        this.bindLinkedProducts();
-        this.bindInventoryLogs();
-        this.loadMappings();
-        this.loadLogs();
-    }
-    
-    // ===== Product Linking =====
-    
-    bindProductLinking() {
-        const site1Search = document.getElementById('site1_product_search');
-        const site2Search = document.getElementById('site2_product_search');
-        const createBtn = document.getElementById('create-mapping-btn');
+    const manager = {
+        currentMappingPage: 1,
+        currentLogsPage: 1,
+        selectedSite1Product: null,
+        selectedSite2Product: null,
         
-        if (site1Search) {
-            site1Search.addEventListener('input', (e) => this.searchProducts('site1', e.target.value));
-        }
-        
-        if (site2Search) {
-            site2Search.addEventListener('input', (e) => this.searchProducts('site2', e.target.value));
-        }
-        
-        if (createBtn) {
-            createBtn.addEventListener('click', () => this.createMapping());
-        }
-    }
-    
-    searchProducts(site, query) {
-        if (query.length < 2) return;
-        
-        const products = this.getMockProducts(site, query);
-        this.displayProductDropdown(site, products);
-    }
-    
-    getMockProducts(site, query) {
-        // نمایش محصولات آزمایشی - در واقع باید از WooCommerce API بگیری
-        return [
-            { id: 1, name: 'محصول تستی ' + site + ' - 1', sku: 'TEST-1' },
-            { id: 2, name: 'محصول تستی ' + site + ' - 2', sku: 'TEST-2' }
-        ].filter(p => p.name.includes(query));
-    }
-    
-    displayProductDropdown(site, products) {
-        const container = document.querySelector('.' + site + '-products-list');
-        if (!container) return;
-        
-        if (products.length === 0) {
-            container.innerHTML = '<p style="padding: 10px;">محصولی پیدا نشد</p>';
-            container.style.display = 'block';
-            return;
-        }
-        
-        let html = '';
-        products.forEach(product => {
-            html += `<div class="product-option" data-site="${site}" data-id="${product.id}" data-name="${product.name}">
-                <strong>${product.name}</strong><br>
-                <small>SKU: ${product.sku}</small>
-            </div>`;
-        });
-        
-        container.innerHTML = html;
-        container.style.display = 'block';
-        
-        // رویدادهای انتخاب
-        container.querySelectorAll('.product-option').forEach(el => {
-            el.addEventListener('click', (e) => this.selectProduct(site, el));
-        });
-    }
-    
-    selectProduct(site, element) {
-        const id = element.dataset.id;
-        const name = element.dataset.name;
-        const sku = element.querySelector('small').textContent.replace('SKU: ', '');
-        
-        const selectedContainer = document.querySelector('.' + site + '-selected');
-        selectedContainer.innerHTML = `
-            <div class="selected-product-info">
-                <p><strong>${name}</strong></p>
-                <p><small>${sku}</small></p>
-            </div>
-        `;
-        
-        if (site === 'site1') {
-            this.selectedSite1Product = { id, name };
-        } else {
-            this.selectedSite2Product = { id, name };
-        }
-        
-        this.updateCreateButtonState();
-        
-        // بستن dropdown
-        document.querySelector('.' + site + '-products-list').style.display = 'none';
-    }
-    
-    updateCreateButtonState() {
-        const btn = document.getElementById('create-mapping-btn');
-        if (this.selectedSite1Product && this.selectedSite2Product) {
-            btn.disabled = false;
-        } else {
-            btn.disabled = true;
-        }
-    }
-    
-    createMapping() {
-        if (!this.selectedSite1Product || !this.selectedSite2Product) {
-            alert('لطفا محصولات را انتخاب کنید');
-            return;
-        }
-        
-        const btn = document.getElementById('create-mapping-btn');
-        btn.disabled = true;
-        btn.textContent = 'درحال ایجاد...';
-        
-        fetch(inventorySyncData.ajaxurl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams({
-                action: 'inventory_sync_create_mapping',
-                _ajax_nonce: inventorySyncData.nonce,
-                site1_product_id: this.selectedSite1Product.id,
-                site2_product_id: this.selectedSite2Product.id
-            })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                alert('ارتباط با موفقیت ایجاد شد');
-                this.resetLinking();
-                this.loadMappings();
-            } else {
-                alert('خطا: ' + (data.data || 'خطای نامشخص'));
-            }
-        })
-        .catch(err => {
-            alert('خطا: ' + err.message);
-        })
-        .finally(() => {
-            btn.disabled = false;
-            btn.textContent = 'ایجاد ارتباط';
-        });
-    }
-    
-    resetLinking() {
-        this.selectedSite1Product = null;
-        this.selectedSite2Product = null;
-        document.querySelector('.site1-selected').innerHTML = '';
-        document.querySelector('.site2-selected').innerHTML = '';
-        document.getElementById('site1_product_search').value = '';
-        document.getElementById('site2_product_search').value = '';
-        this.updateCreateButtonState();
-    }
-    
-    // ===== Linked Products =====
-    
-    bindLinkedProducts() {
-        const refreshBtn = document.getElementById('refresh-mappings-btn');
-        const prevBtn = document.getElementById('prev-page-btn');
-        const nextBtn = document.getElementById('next-page-btn');
-        
-        if (refreshBtn) {
-            refreshBtn.addEventListener('click', () => this.loadMappings());
-        }
-        if (prevBtn) {
-            prevBtn.addEventListener('click', () => this.previousMappingsPage());
-        }
-        if (nextBtn) {
-            nextBtn.addEventListener('click', () => this.nextMappingsPage());
-        }
-    }
-    
-    loadMappings() {
-        fetch(inventorySyncData.ajaxurl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams({
-                action: 'inventory_sync_get_mappings',
-                _ajax_nonce: inventorySyncData.nonce,
-                page: this.currentMappingPage
-            })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                this.renderMappings(data.data);
-            }
-        })
-        .catch(err => console.error(err));
-    }
-    
-    renderMappings(data) {
-        const tbody = document.getElementById('linked-products-tbody');
-        const paginationInfo = document.getElementById('pagination-info');
-        const prevBtn = document.getElementById('prev-page-btn');
-        const nextBtn = document.getElementById('next-page-btn');
-        
-        if (data.mappings.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">ارتباطی پیدا نشد</td></tr>';
-            return;
-        }
-        
-        let html = '';
-        data.mappings.forEach(mapping => {
-            const status = mapping.status.in_sync ? '✓ در حال هماهنگ' : '⊘ منتظر';
-            html += `
-                <tr>
-                    <td>${mapping.site1_product.name}</td>
-                    <td><strong>${mapping.status.site1_quantity}</strong></td>
-                    <td style="text-align: center;">↔</td>
-                    <td>${mapping.site2_product.name}</td>
-                    <td><strong>${mapping.status.site2_quantity}</strong></td>
-                    <td><span class="status-badge ${mapping.status.in_sync ? 'syncing' : 'pending'}">${status}</span></td>
-                    <td>
-                        <button class="button button-small sync-btn" data-mapping-id="${mapping.id}">هماهنگ دستی</button>
-                        <button class="button button-small delete-btn" data-mapping-id="${mapping.id}">حذف</button>
-                    </td>
-                </tr>
-            `;
-        });
-        
-        tbody.innerHTML = html;
-        
-        // رویدادها
-        tbody.querySelectorAll('.sync-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => this.manualSync(e.target.dataset.mappingId));
-        });
-        tbody.querySelectorAll('.delete-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => this.deleteMapping(e.target.dataset.mappingId));
-        });
-        
-        // Pagination
-        paginationInfo.textContent = `صفحه ${data.current_page} از ${data.total_pages}`;
-        prevBtn.disabled = data.current_page === 1;
-        nextBtn.disabled = data.current_page === data.total_pages;
-        
-        // تعداد وظایف
-        const pendingCount = data.mappings.reduce((sum, m) => sum + (m.status.pending_tasks || 0), 0);
-        document.getElementById('pending-count').textContent = pendingCount;
-    }
-    
-    previousMappingsPage() {
-        if (this.currentMappingPage > 1) {
-            this.currentMappingPage--;
-            this.loadMappings();
-        }
-    }
-    
-    nextMappingsPage() {
-        this.currentMappingPage++;
-        this.loadMappings();
-    }
-    
-    manualSync(mappingId) {
-        if (!confirm('آیا می‌خواهید اکنون هماهنگ کنید؟')) return;
-        
-        fetch(inventorySyncData.ajaxurl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams({
-                action: 'inventory_sync_manual_sync',
-                _ajax_nonce: inventorySyncData.nonce,
-                mapping_id: mappingId,
-                source_site: 1
-            })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                alert('درخواست هماهنگ افزوده شد');
-                this.loadMappings();
-            } else {
-                alert('خطا: ' + data.data);
-            }
-        })
-        .catch(err => console.error(err));
-    }
-    
-    deleteMapping(mappingId) {
-        if (!confirm('آیا مطمئنید؟ این ارتباط حذف خواهد شد')) return;
-        
-        fetch(inventorySyncData.ajaxurl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams({
-                action: 'inventory_sync_delete_mapping',
-                _ajax_nonce: inventorySyncData.nonce,
-                mapping_id: mappingId
-            })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                alert('ارتباط برای حذف درخواست شد');
-                this.loadMappings();
-            } else {
-                alert('خطا: ' + data.data);
-            }
-        })
-        .catch(err => console.error(err));
-    }
-    
-    // ===== Inventory Logs =====
-    
-    bindInventoryLogs() {
-        const refreshBtn = document.getElementById('refresh-logs-btn');
-        const statusFilter = document.getElementById('logs-status-filter');
-        const siteFilter = document.getElementById('logs-site-filter');
-        const prevBtn = document.getElementById('logs-prev-page-btn');
-        const nextBtn = document.getElementById('logs-next-page-btn');
-        
-        if (refreshBtn) {
-            refreshBtn.addEventListener('click', () => this.loadLogs());
-        }
-        if (statusFilter) {
-            statusFilter.addEventListener('change', () => { this.currentLogsPage = 1; this.loadLogs(); });
-        }
-        if (siteFilter) {
-            siteFilter.addEventListener('change', () => { this.currentLogsPage = 1; this.loadLogs(); });
-        }
-        if (prevBtn) {
-            prevBtn.addEventListener('click', () => this.previousLogsPage());
-        }
-        if (nextBtn) {
-            nextBtn.addEventListener('click', () => this.nextLogsPage());
-        }
-    }
-    
-    loadLogs() {
-        const statusFilter = document.getElementById('logs-status-filter');
-        const siteFilter = document.getElementById('logs-site-filter');
-        
-        fetch(inventorySyncData.ajaxurl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams({
-                action: 'inventory_sync_get_inventory_logs',
-                _ajax_nonce: inventorySyncData.nonce,
-                page: this.currentLogsPage,
-                status: statusFilter?.value || '',
-                site: siteFilter?.value || ''
-            })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                this.renderLogs(data.data);
-            }
-        })
-        .catch(err => console.error(err));
-    }
-    
-    renderLogs(data) {
-        const tbody = document.getElementById('logs-tbody');
-        const paginationInfo = document.getElementById('logs-pagination-info');
-        const prevBtn = document.getElementById('logs-prev-page-btn');
-        const nextBtn = document.getElementById('logs-next-page-btn');
-        
-        if (data.logs.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">لاگی پیدا نشد</td></tr>';
-            return;
-        }
-        
-        let html = '';
-        data.logs.forEach(log => {
-            const statusBadge = this.getStatusBadge(log.status);
-            const retryBtn = log.status === 'failed' ? 
-                `<button class="button button-small retry-btn" data-log-id="${log.id}">دوباره</button>` : '';
+        init: function() {
+            this.bindProductLinking();
+            this.bindLinkedProducts();
+            this.bindInventoryLogs();
             
-            html += `
-                <tr>
-                    <td>${log.product_name}</td>
-                    <td>${log.variant_name || '-'}</td>
-                    <td>سایت ${log.site}</td>
-                    <td>${log.old_quantity}</td>
-                    <td><strong>${log.new_quantity}</strong></td>
-                    <td>${statusBadge}</td>
-                    <td>${this.formatDate(log.created_at)}</td>
-                    <td>${retryBtn}</td>
-                </tr>
+            // Load data when tabs are switched
+            $(document).on('click', '.nav-tab[data-tab="linked-products"]', () => this.loadMappings());
+            $(document).on('click', '.nav-tab[data-tab="inventory-logs"]', () => this.loadLogs());
+        },
+        
+        // ===== Product Linking Tab =====
+        bindProductLinking: function() {
+            const self = this;
+            
+            // Site 1 search
+            $(document).on('input', '#site1_product_search', function() {
+                const query = $(this).val();
+                if (query.length >= 2) {
+                    self.searchProducts('site1', query);
+                }
+            });
+            
+            // Site 2 search
+            $(document).on('input', '#site2_product_search', function() {
+                const query = $(this).val();
+                if (query.length >= 2) {
+                    self.searchProducts('site2', query);
+                }
+            });
+            
+            // Create mapping button
+            $(document).on('click', '#create-mapping-btn', function() {
+                self.createMapping();
+            });
+            
+            // Product selection
+            $(document).on('click', '.product-option', function() {
+                const site = $(this).data('site');
+                const productId = $(this).data('product-id');
+                const productName = $(this).data('product-name');
+                const variantId = $(this).data('variant-id');
+                const variantName = $(this).data('variant-name');
+                
+                self.selectProduct(site, productId, productName, variantId, variantName);
+            });
+        },
+        
+        searchProducts: function(site, query) {
+            const self = this;
+            const dropdownClass = site === 'site1' ? '.site1-products-list' : '.site2-products-list';
+            const $dropdown = $(dropdownClass);
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_search_products',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    site: site,
+                    query: query
+                },
+                success: function(response) {
+                    if (response.success && response.data.length > 0) {
+                        self.displayProductDropdown(site, response.data);
+                    } else {
+                        $dropdown.hide();
+                    }
+                }
+            });
+        },
+        
+        displayProductDropdown: function(site, products) {
+            const dropdownClass = site === 'site1' ? '.site1-products-list' : '.site2-products-list';
+            const $dropdown = $(dropdownClass);
+            
+            let html = '';
+            products.forEach(product => {
+                html += `
+                    <div class="product-option" data-site="${site}" data-product-id="${product.id}" 
+                         data-product-name="${product.name}" data-variant-id="${product.variant_id || ''}" 
+                         data-variant-name="${product.variant_name || ''}">
+                        <strong>${product.name}</strong>
+                        ${product.variant_name ? `<br><small>${product.variant_name}</small>` : ''}
+                        <br><small>موجودی: ${product.stock}</small>
+                    </div>
+                `;
+            });
+            
+            $dropdown.html(html).show();
+        },
+        
+        selectProduct: function(site, productId, productName, variantId, variantName) {
+            const containerClass = site === 'site1' ? '.site1-selected' : '.site2-selected';
+            const $container = $(containerClass);
+            
+            let html = `
+                <div class="selected-product-info">
+                    <p><strong>${productName}</strong></p>
+                    ${variantName ? `<p><small>${variantName}</small></p>` : ''}
+                </div>
             `;
-        });
-        
-        tbody.innerHTML = html;
-        
-        // Retry buttons
-        tbody.querySelectorAll('.retry-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => this.retryLog(e.target.dataset.logId));
-        });
-        
-        // Pagination
-        paginationInfo.textContent = `صفحه ${data.current_page} از ${data.total_pages}`;
-        prevBtn.disabled = data.current_page === 1;
-        nextBtn.disabled = data.current_page === data.total_pages;
-    }
-    
-    previousLogsPage() {
-        if (this.currentLogsPage > 1) {
-            this.currentLogsPage--;
-            this.loadLogs();
-        }
-    }
-    
-    nextLogsPage() {
-        this.currentLogsPage++;
-        this.loadLogs();
-    }
-    
-    retryLog(logId) {
-        if (!confirm('آیا می‌خواهید دوباره تلاش کنید؟')) return;
-        
-        fetch(inventorySyncData.ajaxurl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams({
-                action: 'inventory_sync_retry_log',
-                _ajax_nonce: inventorySyncData.nonce,
-                log_id: logId
-            })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                alert('درخواست دوباره افزوده شد');
-                this.loadLogs();
+            
+            $container.html(html);
+            
+            // Hide dropdown and clear search
+            const inputId = site === 'site1' ? '#site1_product_search' : '#site2_product_search';
+            $(inputId).val('');
+            const dropdownClass = site === 'site1' ? '.site1-products-list' : '.site2-products-list';
+            $(dropdownClass).hide();
+            
+            // Update internal state
+            if (site === 'site1') {
+                this.selectedSite1Product = { id: productId, variant_id: variantId };
             } else {
-                alert('خطا: ' + data.data);
+                this.selectedSite2Product = { id: productId, variant_id: variantId };
             }
-        })
-        .catch(err => console.error(err));
-    }
+            
+            // Enable create button if both products are selected
+            this.checkCreateMappingEnabled();
+        },
+        
+        checkCreateMappingEnabled: function() {
+            const enabled = this.selectedSite1Product && this.selectedSite2Product;
+            $('#create-mapping-btn').prop('disabled', !enabled);
+        },
+        
+        createMapping: function() {
+            const self = this;
+            
+            if (!this.selectedSite1Product || !this.selectedSite2Product) {
+                alert('لطفا هر دو محصول را انتخاب کنید');
+                return;
+            }
+            
+            const btn = $('#create-mapping-btn');
+            const originalText = btn.text();
+            btn.prop('disabled', true).text('درحال ایجاد...');
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_create_mapping',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    site1_product_id: this.selectedSite1Product.id,
+                    site2_product_id: this.selectedSite2Product.id,
+                    site1_variant_id: this.selectedSite1Product.variant_id || 0,
+                    site2_variant_id: this.selectedSite2Product.variant_id || 0
+                },
+                success: function(response) {
+                    if (response.success) {
+                        alert('ارتباط با موفقیت ایجاد شد');
+                        $('.site1-selected').html('');
+                        $('.site2-selected').html('');
+                        self.selectedSite1Product = null;
+                        self.selectedSite2Product = null;
+                        self.checkCreateMappingEnabled();
+                        self.loadMappings();
+                    } else {
+                        alert('خطا: ' + response.data);
+                    }
+                },
+                error: function() {
+                    alert('خطای سرور');
+                },
+                complete: function() {
+                    btn.prop('disabled', false).text(originalText);
+                }
+            });
+        },
+        
+        // ===== Linked Products Tab =====
+        bindLinkedProducts: function() {
+            const self = this;
+            
+            $(document).on('click', '#refresh-mappings-btn', function() {
+                self.loadMappings();
+            });
+            
+            $(document).on('click', '.delete-mapping-btn', function() {
+                const mappingId = $(this).data('mapping-id');
+                if (confirm('آیا می‌خواهید این ارتباط را حذف کنید؟')) {
+                    self.deleteMapping(mappingId);
+                }
+            });
+            
+            $(document).on('click', '.sync-mapping-btn', function() {
+                const mappingId = $(this).data('mapping-id');
+                const sourceSite = $(this).data('source-site');
+                self.manualSync(mappingId, sourceSite);
+            });
+            
+            $(document).on('click', '#prev-page-btn', function() {
+                if (self.currentMappingPage > 1) {
+                    self.currentMappingPage--;
+                    self.loadMappings();
+                }
+            });
+            
+            $(document).on('click', '#next-page-btn', function() {
+                self.currentMappingPage++;
+                self.loadMappings();
+            });
+        },
+        
+        loadMappings: function() {
+            const self = this;
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_get_mappings',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    page: this.currentMappingPage
+                },
+                success: function(response) {
+                    if (response.success) {
+                        self.displayMappings(response.data.mappings);
+                        self.updateMappingsPagination(response.data);
+                        $('#pending-count').text(response.data.pending_tasks || 0);
+                    }
+                }
+            });
+        },
+        
+        displayMappings: function(mappings) {
+            const $tbody = $('#linked-products-tbody');
+            
+            if (!mappings || mappings.length === 0) {
+                $tbody.html('<tr><td colspan="7" style="text-align: center;">ارتباطی ثبت نشده است</td></tr>');
+                return;
+            }
+            
+            let html = '';
+            mappings.forEach(mapping => {
+                const statusClass = mapping.status.in_sync ? 'success' : (mapping.status.pending_tasks > 0 ? 'pending' : 'syncing');
+                const statusText = mapping.status.in_sync ? 'هماهنگ' : `${mapping.status.pending_tasks} وظیفه`;
+                
+                html += `
+                    <tr>
+                        <td><strong>${mapping.site1_product.name}</strong></td>
+                        <td>${mapping.status.site1_stock || 0}</td>
+                        <td style="text-align: center;">↔</td>
+                        <td><strong>${mapping.site2_product.name}</strong></td>
+                        <td>${mapping.status.site2_stock || 0}</td>
+                        <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                        <td>
+                            <button class="button sync-mapping-btn" data-mapping-id="${mapping.id}" data-source-site="1">
+                                از سایت 1
+                            </button>
+                            <button class="button sync-mapping-btn" data-mapping-id="${mapping.id}" data-source-site="2">
+                                از سایت 2
+                            </button>
+                            <button class="button delete-mapping-btn" data-mapping-id="${mapping.id}">
+                                حذف
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            $tbody.html(html);
+        },
+        
+        updateMappingsPagination: function(data) {
+            const info = `صفحه ${data.current_page} از ${data.total_pages} (کل: ${data.total})`;
+            $('#pagination-info').text(info);
+            
+            $('#prev-page-btn').prop('disabled', data.current_page <= 1);
+            $('#next-page-btn').prop('disabled', data.current_page >= data.total_pages);
+        },
+        
+        deleteMapping: function(mappingId) {
+            const self = this;
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_delete_mapping',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    mapping_id: mappingId
+                },
+                success: function(response) {
+                    if (response.success) {
+                        alert('ارتباط حذف شد');
+                        self.loadMappings();
+                    } else {
+                        alert('خطا: ' + response.data);
+                    }
+                }
+            });
+        },
+        
+        manualSync: function(mappingId, sourceSite) {
+            const self = this;
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_manual_sync',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    mapping_id: mappingId,
+                    source_site: sourceSite
+                },
+                success: function(response) {
+                    if (response.success) {
+                        alert('هماهنگ‌سازی دستی شروع شد');
+                        self.loadMappings();
+                    } else {
+                        alert('خطا: ' + response.data);
+                    }
+                }
+            });
+        },
+        
+        // ===== Inventory Logs Tab =====
+        bindInventoryLogs: function() {
+            const self = this;
+            
+            $(document).on('change', '#logs-status-filter', function() {
+                self.currentLogsPage = 1;
+                self.loadLogs();
+            });
+            
+            $(document).on('change', '#logs-site-filter', function() {
+                self.currentLogsPage = 1;
+                self.loadLogs();
+            });
+            
+            $(document).on('click', '#refresh-logs-btn', function() {
+                self.loadLogs();
+            });
+            
+            $(document).on('click', '.retry-log-btn', function() {
+                const logId = $(this).data('log-id');
+                self.retryLog(logId);
+            });
+            
+            $(document).on('click', '#logs-prev-page-btn', function() {
+                if (self.currentLogsPage > 1) {
+                    self.currentLogsPage--;
+                    self.loadLogs();
+                }
+            });
+            
+            $(document).on('click', '#logs-next-page-btn', function() {
+                self.currentLogsPage++;
+                self.loadLogs();
+            });
+        },
+        
+        loadLogs: function() {
+            const self = this;
+            const status = $('#logs-status-filter').val();
+            const site = $('#logs-site-filter').val();
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_get_inventory_logs',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    page: this.currentLogsPage,
+                    status: status || undefined,
+                    site: site ? parseInt(site) : undefined
+                },
+                success: function(response) {
+                    if (response.success) {
+                        self.displayLogs(response.data.logs);
+                        self.updateLogsPagination(response.data);
+                    }
+                }
+            });
+        },
+        
+        displayLogs: function(logs) {
+            const $tbody = $('#logs-tbody');
+            
+            if (!logs || logs.length === 0) {
+                $tbody.html('<tr><td colspan="8" style="text-align: center;">لاگی ثبت نشده است</td></tr>');
+                return;
+            }
+            
+            let html = '';
+            logs.forEach(log => {
+                const statusClass = log.status === 'completed' ? 'success' : (log.status === 'pending' ? 'pending' : 'failed');
+                const statusText = log.status === 'completed' ? 'موفق' : (log.status === 'pending' ? 'درانتظار' : 'ناموفق');
+                
+                html += `
+                    <tr>
+                        <td>${log.product_name}</td>
+                        <td>${log.variant_name || '-'}</td>
+                        <td>سایت ${log.site}</td>
+                        <td>${log.old_quantity}</td>
+                        <td>${log.new_quantity}</td>
+                        <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                        <td>${this.formatDate(log.created_at)}</td>
+                        <td>
+                            ${log.status === 'failed' ? `
+                                <button class="button retry-log-btn" data-log-id="${log.id}">
+                                    رفرش
+                                </button>
+                            ` : ''}
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            $tbody.html(html);
+        },
+        
+        updateLogsPagination: function(data) {
+            const info = `صفحه ${data.current_page} از ${data.total_pages} (کل: ${data.total})`;
+            $('#logs-pagination-info').text(info);
+            
+            $('#logs-prev-page-btn').prop('disabled', data.current_page <= 1);
+            $('#logs-next-page-btn').prop('disabled', data.current_page >= data.total_pages);
+        },
+        
+        retryLog: function(logId) {
+            const self = this;
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_retry_log',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    log_id: logId
+                },
+                success: function(response) {
+                    if (response.success) {
+                        alert('درخواست رفرش فرستاده شد');
+                        self.loadLogs();
+                    } else {
+                        alert('خطا: ' + response.data);
+                    }
+                }
+            });
+        },
+        
+        formatDate: function(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('fa-IR') + ' ' + date.toLocaleTimeString('fa-IR');
+        }
+    };
     
-    // ===== Utilities =====
+    // Initialize on document ready
+    $(document).ready(function() {
+        manager.init();
+    });
     
-    getStatusBadge(status) {
-        const badges = {
-            'pending': '<span class="status-badge pending">⏳ درانتظار</span>',
-            'success': '<span class="status-badge success">✓ موفق</span>',
-            'failed': '<span class="status-badge failed">✗ ناموفق</span>'
-        };
-        return badges[status] || badges.pending;
-    }
-    
-    formatDate(dateStr) {
-        const date = new Date(dateStr);
-        return date.toLocaleDateString('fa-IR') + ' ' + date.toLocaleTimeString('fa-IR');
-    }
-}
-
-// Initialize
-document.addEventListener('DOMContentLoaded', function() {
-    new InventoryLinkingManager();
-});
+})(jQuery);
