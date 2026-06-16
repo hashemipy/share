@@ -479,6 +479,36 @@
                     _ajax_nonce: inventorySyncData.nonce
                 },
                 success: (response) => {
+                    console.log('[v0] loadProductSelects response:', response);
+                    if (response.success && response.data) {
+                        const site1 = response.data.site1 || [];
+                        const site2 = response.data.site2 || [];
+                        
+                        console.log('[v0] Site1 products:', site1);
+                        console.log('[v0] Site2 products:', site2);
+                        
+                        if (site1.length === 0) {
+                            console.warn('[v0] Site1 products are empty');
+                        }
+                        if (site2.length === 0) {
+                            console.warn('[v0] Site2 products are empty');
+                        }
+                        
+                        this.populateSelect('#site1-product-select', site1);
+                        this.populateSelect('#site2-product-select', site2);
+                    } else {
+                        console.error('[v0] API Error:', response.data);
+                        alert('خطا در بارگذاری محصولات: ' + (response.data || 'نامعلوم'));
+                    }
+                },
+                error: (xhr, status, error) => {
+                    console.error('[v0] AJAX Error:', error, xhr);
+                    const errorMsg = xhr.responseJSON?.data || error || 'خطای نامعلوم';
+                    alert('خطای ارتباطی: ' + errorMsg);
+                }
+            });
+        },
+                success: (response) => {
                     if (response.success && response.data) {
                         const site1 = response.data.site1 || [];
                         const site2 = response.data.site2 || [];

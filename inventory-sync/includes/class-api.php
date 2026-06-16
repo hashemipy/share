@@ -36,7 +36,17 @@ class Inventory_Sync_API {
             'order' => 'desc'
         ];
         
-        return $this->request('GET', $endpoint, [], $params);
+        error_log('[inventory-sync] API get_products called for: ' . $this->site_url . $endpoint);
+        
+        $result = $this->request('GET', $endpoint, [], $params);
+        
+        if (is_wp_error($result)) {
+            error_log('[inventory-sync] API get_products error: ' . $result->get_error_message());
+        } else {
+            error_log('[inventory-sync] API get_products result type: ' . gettype($result) . ', count: ' . (is_array($result) ? count($result) : 'N/A'));
+        }
+        
+        return $result;
     }
     
     /**
@@ -253,32 +263,56 @@ class Inventory_Sync_API {
                 'Content-Type' => 'application/json',
                 'User-Agent' => 'Inventory-Sync/' . INVENTORY_SYNC_VERSION
             ],
-            'sslverify' => apply_filters('inventory_sync_verify_ssl', true)
+            'sslverify' => apply_filters('inventory_sync_verify_ssl', false) // Default to false for compatibility
         ];
         
         if (!empty($data)) {
             $args['body'] = wp_json_encode($data);
         }
         
+        error_log('[inventory-sync] Making request to: ' . $url);
+        
         $attempt = 0;
         while ($attempt < $this->retry_count) {
             $response = wp_remote_request($url, $args);
             
-            if (!is_wp_error($response)) {
-                $status_code = wp_remote_retrieve_response_code($response);
-                
-                if (in_array($status_code, [200, 201, 204])) {
-                    $body = wp_remote_retrieve_body($response);
-                    return json_decode($body, true);
-                } elseif (in_array($status_code, [400, 401, 403, 404])) {
-                    // Don't retry on client errors
-                    return new WP_Error('api_error', wp_remote_retrieve_body($response), ['status' => $status_code]);
+            if (is_wp_error($response)) {
+                error_log('[inventory-sync] Request attempt ' . ($attempt + 1) . ' failed: ' . $response->get_error_message());
+                $attempt++;
+                if ($attempt < $this->retry_count) {
+                    sleep(pow(2, $attempt)); // Exponential backoff
                 }
+                continue;
             }
             
+            $status_code = wp_remote_retrieve_response_code($response);
+            $body = wp_remote_retrieve_body($response);
+            
+            error_log('[inventory-sync] Response status: ' . $status_code);
+            
+            if (in_array($status_code, [200, 201, 204])) {
+                $decoded = json_decode($body, true);
+                error_log('[inventory-sync] Success response decoded');
+                return $decoded;
+            } elseif (in_array($status_code, [400, 401, 403, 404])) {
+                // Don't retry on client errors
+                error_log('[inventory-sync] Client error ' . $status_code . ': ' . $body);
+                return new WP_Error('api_error', $body, ['status' => $status_code]);
+            } elseif (in_array($status_code, [500, 502, 503, 504])) {
+                // Retry on server errors
+                error_log('[inventory-sync] Server error ' . $status_code . ', retrying...');
+                $attempt++;
+                if ($attempt < $this->retry_count) {
+                    sleep(pow(2, $attempt));
+                }
+                continue;
+            }
+            
+            // Unknown status code
+            error_log('[inventory-sync] Unknown status code: ' . $status_code);
             $attempt++;
             if ($attempt < $this->retry_count) {
-                sleep(pow(2, $attempt)); // Exponential backoff
+                sleep(pow(2, $attempt));
             }
         }
         

@@ -95,8 +95,38 @@ class Inventory_Sync_Admin {
         check_ajax_referer('inventory_sync_nonce');
         
         if (!current_user_can('manage_woocommerce')) {
-            wp_send_json_error('عدم دسترسی');
+            wp_send_json_error('رسائی نہیں');
         }
+        
+        $site = sanitize_text_field($_POST['site'] ?? '');
+        
+        if ($site === 'site1') {
+            $url = Inventory_Sync_Settings::get_site1_url();
+            $key = Inventory_Sync_Settings::get_site1_key();
+            $secret = Inventory_Sync_Settings::get_site1_secret();
+        } else {
+            $url = Inventory_Sync_Settings::get_site2_url();
+            $key = Inventory_Sync_Settings::get_site2_key();
+            $secret = Inventory_Sync_Settings::get_site2_secret();
+        }
+        
+        if (empty($url) || empty($key) || empty($secret)) {
+            wp_send_json_error('تنظیمات ناقص: URL، Key یا Secret موجود نیست');
+        }
+        
+        try {
+            $api = new Inventory_Sync_API($url, $key, $secret);
+            $result = $api->test_connection();
+            
+            if ($result) {
+                wp_send_json_success('اتصال برقرار است!');
+            } else {
+                wp_send_json_error('اتصال ناموفق - API پاسخ نداد');
+            }
+        } catch (Exception $e) {
+            wp_send_json_error('خطا: ' . $e->getMessage());
+        }
+    }
         
         $site = sanitize_text_field($_POST['site'] ?? '');
         
@@ -325,22 +355,37 @@ class Inventory_Sync_Admin {
                     
                     if (is_wp_error($response)) {
                         error_log('[inventory-sync] Site2 API Error: ' . $response->get_error_message());
-                    } else {
-                        $site2_products = $response ?: [];
+                    } elseif (is_array($response)) {
+                        $site2_products = $response;
                         error_log('[inventory-sync] Site2 products count: ' . count($site2_products));
+                    } else {
+                        error_log('[inventory-sync] Site2 API response is not array: ' . print_r($response, true));
                     }
                 } catch (Exception $e) {
                     error_log('[inventory-sync] Site2 Exception: ' . $e->getMessage());
                 }
             } else {
-                error_log('[inventory-sync] Site2 credentials not configured');
+                error_log('[inventory-sync] Site2 credentials missing - url: ' . ($site2_url ? 'YES' : 'NO') . ', key: ' . ($site2_key ? 'YES' : 'NO') . ', secret: ' . ($site2_secret ? 'YES' : 'NO'));
+            }
+            
+            // Transform Site2 products to match Site1 format
+            $site2_formatted = [];
+            if (is_array($site2_products)) {
+                foreach ($site2_products as $product) {
+                    // API returns objects with id, name, sku properties
+                    $site2_formatted[] = [
+                        'id' => isset($product['id']) ? $product['id'] : (isset($product->id) ? $product->id : null),
+                        'name' => isset($product['name']) ? $product['name'] : (isset($product->name) ? $product->name : 'Unknown'),
+                        'sku' => isset($product['sku']) ? $product['sku'] : (isset($product->sku) ? $product->sku : '')
+                    ];
+                }
             }
             
             $data = [
                 'site1' => array_map(function($p) {
                     return ['id' => $p->get_id(), 'name' => $p->get_name(), 'sku' => $p->get_sku()];
                 }, $site1_products),
-                'site2' => $site2_products
+                'site2' => $site2_formatted
             ];
             
             wp_send_json_success($data);
