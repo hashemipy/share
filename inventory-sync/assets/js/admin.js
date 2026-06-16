@@ -21,7 +21,7 @@
             // Settings
             $(document).on('click', '.test-btn', this.testConnection.bind(this));
             $(document).on('click', '.save-settings-btn', this.saveSettings.bind(this));
-            $(document).on('change', 'input[name="current_site_role"]', this.updateSiteRole.bind(this));
+            $(document).on('change', 'input[name="current_site_role"]', this.quickSaveSettings.bind(this));
             
             // Mapping
             $(document).on('click', '.sync-all-btn', this.syncAllInventory.bind(this));
@@ -75,14 +75,14 @@
             
             if (currentSiteRole === 'site2') {
                 // Hide mapping and transfer tabs for site 2
-                $('[data-tab="mapping"]').closest('.nav-tab').hide();
-                $('[data-tab="transfer"]').closest('.nav-tab').hide();
-                $('[data-tab="transferred"]').closest('.nav-tab').hide();
+                $('a.nav-tab[data-tab="mapping"]').hide();
+                $('a.nav-tab[data-tab="transfer"]').hide();
+                $('a.nav-tab[data-tab="transferred"]').hide();
             } else {
                 // Show all tabs for site 1
-                $('[data-tab="mapping"]').closest('.nav-tab').show();
-                $('[data-tab="transfer"]').closest('.nav-tab').show();
-                $('[data-tab="transferred"]').closest('.nav-tab').show();
+                $('a.nav-tab[data-tab="mapping"]').show();
+                $('a.nav-tab[data-tab="transfer"]').show();
+                $('a.nav-tab[data-tab="transferred"]').show();
             }
         },
         
@@ -106,6 +106,36 @@
                     site2_key: $('#site2_key').val(),
                     site2_secret: $('#site2_secret').val(),
                     sync_direction: $('#sync_direction').val(),
+                    auto_sync_enabled: $('#auto_sync_enabled').is(':checked') ? 1 : 0
+                },
+                success: (response) => {
+                    if (response.success) {
+                        this.updateTabsVisibility();
+                    }
+                }
+            });
+        },
+        
+        quickSaveSettings: function(e) {
+            const newRole = $('input[name="current_site_role"]:checked').val();
+            
+            // فقط نقش سایت را به سرعت ذخیره کن
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_save_settings',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    current_site_role: newRole,
+                    site1_name: $('#site1_name').val() || '',
+                    site1_url: $('#site1_url').val() || '',
+                    site1_key: $('#site1_key').val() || '',
+                    site1_secret: $('#site1_secret').val() || '',
+                    site2_name: $('#site2_name').val() || '',
+                    site2_url: $('#site2_url').val() || '',
+                    site2_key: $('#site2_key').val() || '',
+                    site2_secret: $('#site2_secret').val() || '',
+                    sync_direction: $('#sync_direction').val() || 'site1_to_site2',
                     auto_sync_enabled: $('#auto_sync_enabled').is(':checked') ? 1 : 0
                 },
                 success: (response) => {
@@ -168,6 +198,7 @@
             const data = {
                 action: 'inventory_sync_save_settings',
                 _ajax_nonce: inventorySyncData.nonce,
+                current_site_role: $('input[name="current_site_role"]:checked').val(),
                 site1_name: $('#site1_name').val(),
                 site1_url: $('#site1_url').val(),
                 site1_key: $('#site1_key').val(),
@@ -186,10 +217,16 @@
                 data: data,
                 success: (response) => {
                     if (response.success) {
+                        const message = response.data.message || response.data;
                         $('.form-actions .status-message')
                             .removeClass('error')
                             .addClass('success')
-                            .text('✓ ' + response.data);
+                            .text('✓ ' + message);
+                        
+                        // بروز‌رسانی تب‌ها بر اساس نقش جدید
+                        if (response.data.current_site_role) {
+                            this.updateTabsVisibility();
+                        }
                     }
                 },
                 error: () => {
@@ -209,7 +246,7 @@
             const $container = site === 'site1' ? 
                 $('.site1-products') : $('.site2-products');
             
-            $container.html('<p>' + inventorySyncData.i18n.loading + '</p>');
+            $container.html('<p>درحال بارگذاری محصولات...</p>');
             
             $.ajax({
                 url: inventorySyncData.ajaxurl,
@@ -221,29 +258,44 @@
                     page: 1
                 },
                 success: (response) => {
-                    if (response.success) {
+                    if (response.success && response.data) {
                         this.renderProducts($container, response.data, site);
+                    } else {
+                        $container.html(
+                            '<p class="alert alert-info">⚠️ ' + 
+                            (response.data || 'لطفاً تنظیمات اتصالات سایت را بررسی کنید') + 
+                            '</p>'
+                        );
                     }
                 },
                 error: () => {
-                    $container.html('<p class="alert alert-error">' + inventorySyncData.i18n.error + '</p>');
+                    $container.html(
+                        '<p class="alert alert-error">❌ خطا در بارگذاری محصولات. ' +
+                        'اتصالات سایت یا تنظیمات را بررسی کنید.</p>'
+                    );
                 }
             });
         },
         
         renderProducts: function($container, products, site) {
             if (!products || products.length === 0) {
-                $container.html('<p>' + inventorySyncData.i18n.selectProducts + '</p>');
+                $container.html('<p>❌ محصولی پیدا نشد. لطفاً تنظیمات را بررسی کنید.</p>');
                 return;
             }
             
             let html = '';
             products.forEach(product => {
+                // پشتیبانی از فرمت‌های مختلف API
+                const productId = product.id;
+                const productName = product.name || 'نام نامشخص';
+                const sku = product.sku || 'بدون SKU';
+                const stockQty = product.stock_quantity || 0;
+                
                 html += `
-                    <div class="product-item" data-site="${site}" data-id="${product.id}" style="padding: 10px; border: 1px solid #ddd; border-radius: 3px; margin-bottom: 8px; cursor: pointer; transition: all 0.2s;">
-                        <div style="font-weight: bold; margin-bottom: 3px;">${product.name}</div>
-                        <div style="font-size: 12px; color: #666;">SKU: ${product.sku || 'N/A'}</div>
-                        <div style="font-size: 12px; color: #666;">📦 موجودی: ${product.stock_quantity || 0}</div>
+                    <div class="product-item" data-site="${site}" data-id="${productId}" style="padding: 10px; border: 1px solid #ddd; border-radius: 3px; margin-bottom: 8px; cursor: pointer; transition: all 0.2s;">
+                        <div style="font-weight: bold; margin-bottom: 3px;">${productName}</div>
+                        <div style="font-size: 12px; color: #666;">SKU: ${sku}</div>
+                        <div style="font-size: 12px; color: #666;">📦 موجودی: ${stockQty}</div>
                     </div>
                 `;
             });

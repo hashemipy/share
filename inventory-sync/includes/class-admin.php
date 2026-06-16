@@ -129,7 +129,10 @@ class Inventory_Sync_Admin {
         unset($data['action'], $data['_ajax_nonce']);
         
         if (Inventory_Sync_Settings::save_settings($data)) {
-            wp_send_json_success('تنظیمات ذخیره شد');
+            wp_send_json_success([
+                'message' => 'تنظیمات ذخیره شد',
+                'current_site_role' => sanitize_text_field($data['current_site_role'] ?? 'site1')
+            ]);
         } else {
             wp_send_json_error('خطا در ذخیره');
         }
@@ -142,30 +145,86 @@ class Inventory_Sync_Admin {
             wp_send_json_error('عدم دسترسی');
         }
         
-        $site = sanitize_text_field($_POST['site'] ?? '');
+        $site = sanitize_text_field($_POST['site'] ?? 'site1');
         $page = intval($_POST['page'] ?? 1);
         
+        // بررسی اتصالات برای سایت درخواست‌شده
         if ($site === 'site1') {
-            $api = new Inventory_Sync_API(
-                Inventory_Sync_Settings::get_site1_url(),
-                Inventory_Sync_Settings::get_site1_key(),
-                Inventory_Sync_Settings::get_site1_secret()
-            );
+            $url = Inventory_Sync_Settings::get_site1_url();
+            $key = Inventory_Sync_Settings::get_site1_key();
+            $secret = Inventory_Sync_Settings::get_site1_secret();
+        } elseif ($site === 'site2') {
+            $url = Inventory_Sync_Settings::get_site2_url();
+            $key = Inventory_Sync_Settings::get_site2_key();
+            $secret = Inventory_Sync_Settings::get_site2_secret();
         } else {
-            $api = new Inventory_Sync_API(
-                Inventory_Sync_Settings::get_site2_url(),
-                Inventory_Sync_Settings::get_site2_key(),
-                Inventory_Sync_Settings::get_site2_secret()
-            );
+            $url = $key = $secret = '';
         }
         
+        // اگر اتصالات کامل و معتبر نبود، محصولات محلی را برگردان
+        if (empty($url) || empty($key) || empty($secret)) {
+            $products = $this->get_local_products($page);
+            if (empty($products)) {
+                wp_send_json_error('محصولی پیدا نشد و اتصالات سایت ' . ($site === 'site2' ? '۲' : '۱') . ' تنظیم نشده است.');
+            }
+            wp_send_json_success($products);
+            return;
+        }
+        
+        // تلاش برای اتصال به سایت دور
+        $api = new Inventory_Sync_API($url, $key, $secret);
         $products = $api->get_products(50, $page);
         
         if (is_wp_error($products)) {
-            wp_send_json_error($products->get_error_message());
+            // اگر اتصال ناموفق بود، محصولات محلی را برگردان
+            $local_products = $this->get_local_products($page);
+            if (!empty($local_products)) {
+                wp_send_json_success($local_products);
+            }
+            wp_send_json_error('خطا در اتصال به سایت ' . ($site === 'site2' ? '۲' : '۱') . ': ' . $products->get_error_message());
         }
         
         wp_send_json_success($products);
+    }
+    
+    /**
+     * دریافت محصولات محلی (از سایت جاری)
+     */
+    private function get_local_products($page = 1) {
+        $per_page = 50;
+        $offset = ($page - 1) * $per_page;
+        
+        $args = [
+            'post_type' => 'product',
+            'posts_per_page' => $per_page,
+            'paged' => $page,
+            'post_status' => 'publish'
+        ];
+        
+        $products_query = new WP_Query($args);
+        $products = [];
+        
+        if ($products_query->have_posts()) {
+            while ($products_query->have_posts()) {
+                $products_query->the_post();
+                $product = wc_get_product(get_the_ID());
+                
+                if ($product) {
+                    $products[] = [
+                        'id' => $product->get_id(),
+                        'name' => $product->get_name(),
+                        'sku' => $product->get_sku(),
+                        'type' => $product->get_type(),
+                        'stock_quantity' => $product->get_stock_quantity(),
+                        'status' => $product->get_status()
+                    ];
+                }
+            }
+        }
+        
+        wp_reset_postdata();
+        
+        return $products;
     }
     
     public function ajax_save_mapping() {
