@@ -180,6 +180,8 @@
             const $select = site === 'site1' ? 
                 $('#mapping-site1-product') : $('#mapping-site2-product');
             
+            $select.html('<option value="">درحال بارگذاری...</option>');
+            
             $.ajax({
                 url: inventorySyncData.ajaxurl,
                 type: 'POST',
@@ -190,15 +192,32 @@
                     page: 1
                 },
                 success: (response) => {
-                    if (response.success && response.data) {
-                        let options = '<option value="">' + inventorySyncData.i18n.selectProducts + '</option>';
+                    let options = '<option value="">انتخاب محصول...</option>';
+                    
+                    if (response.success && response.data && response.data.length > 0) {
                         response.data.forEach(product => {
-                            options += `<option value="${product.id}" data-name="${product.name}" data-stock="${product.stock_quantity || 0}">
-                                ${product.name} (SKU: ${product.sku || 'N/A'})
+                            const productName = (product.name || 'محصول بدون نام') + 
+                                (product.sku ? ' (SKU: ' + product.sku + ')' : '');
+                            const stock = product.stock_quantity || 0;
+                            
+                            options += `<option value="${product.id}" data-stock="${stock}">
+                                ${productName} - موجودی: ${stock}
                             </option>`;
                         });
-                        $select.html(options);
+                        console.log('[v0] محصولات ' + site + ' بارگذاری شد:', response.data.length);
+                    } else if (response.success) {
+                        options += '<option value="" disabled>محصول موجود نیست</option>';
+                        console.log('[v0] محصول برای سایت ' + site + ' یافت نشد');
+                    } else {
+                        options += '<option value="" disabled>خطا: ' + response.data + '</option>';
+                        console.log('[v0] خطا در بارگذاری محصولات:', response.data);
                     }
+                    
+                    $select.html(options);
+                },
+                error: (xhr, status, error) => {
+                    $select.html('<option value="" disabled>خطا در اتصال</option>');
+                    console.log('[v0] AJAX خطا:', error, xhr.responseText);
                 }
             });
         },
@@ -388,7 +407,7 @@
         syncAllInventory: function(e) {
             e.preventDefault();
             
-            if (!confirm('آیا می‌خواهید تمام موجودی‌ها را هماهنگ کنید؟')) {
+            if (!confirm('آیا می��خواهید تمام موجودی‌ها را هماهنگ کنید؟')) {
                 return;
             }
             

@@ -45,7 +45,7 @@ if (!defined('ABSPATH')) exit;
                         <label for="current_site">
                             <strong><?php esc_html_e('🏢 این سایت کدام یک است؟', 'inventory-sync'); ?></strong>
                         </label>
-                        <select id="current_site" class="form-control" style="width: 200px; padding: 8px; margin: 10px 0;">
+                        <select id="current_site" name="current_site" class="form-control" style="width: 200px; padding: 8px; margin: 10px 0;">
                             <option value="site1" <?php selected(Inventory_Sync_Settings::get_current_site(), 'site1'); ?>>
                                 <?php echo esc_html(Inventory_Sync_Settings::get_site1_name()); ?> (Site 1)
                             </option>
@@ -407,7 +407,7 @@ if (!defined('ABSPATH')) exit;
     <!-- Settings Help -->
     <div id="help-site1-name" class="help-item">
         <h3>نام سایت شماره 1</h3>
-        <p>یک نام شناسایی برای سایت اول انتخاب کنید تا بتوانید آن را شناخت کنید.</p>
+        <p>یک نام شنا��ایی برای سایت اول انتخاب کنید تا بتوانید آن را شناخت کنید.</p>
         <p><strong>مثال:</strong> "فروشگاه اصلی" یا "انبار اصلی"</p>
     </div>
     

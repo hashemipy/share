@@ -279,41 +279,63 @@ class Inventory_Sync_Admin {
         $page = intval($_POST['page'] ?? 1);
         $search = sanitize_text_field($_POST['search'] ?? '');
         
-        // دریافت محصولات از API
-        if ($site === 'site1') {
-            $api = new Inventory_Sync_API(
-                Inventory_Sync_Settings::get_site1_url(),
-                Inventory_Sync_Settings::get_site1_key(),
-                Inventory_Sync_Settings::get_site1_secret()
-            );
-        } else {
-            $api = new Inventory_Sync_API(
-                Inventory_Sync_Settings::get_site2_url(),
-                Inventory_Sync_Settings::get_site2_key(),
-                Inventory_Sync_Settings::get_site2_secret()
-            );
-        }
-        
-        $products = $api->get_products(50, $page);
-        
-        if (is_wp_error($products)) {
-            wp_send_json_error($products->get_error_message());
-        }
-        
-        // فیلتر: محصولات نشده‌مرتبط
-        $mapped_ids = $wpdb->get_col(
-            "SELECT DISTINCT " . ($site === 'site1' ? 'site1_product_id' : 'site2_product_id') . 
-            " FROM {$wpdb->prefix}inventory_sync_mapping"
-        );
-        
-        $filtered = [];
-        foreach ($products as $p) {
-            if (!in_array($p['id'], $mapped_ids)) {
-                $filtered[] = $p;
+        try {
+            // دریافت محصولات از API
+            if ($site === 'site1') {
+                $url = Inventory_Sync_Settings::get_site1_url();
+                $key = Inventory_Sync_Settings::get_site1_key();
+                $secret = Inventory_Sync_Settings::get_site1_secret();
+            } else {
+                $url = Inventory_Sync_Settings::get_site2_url();
+                $key = Inventory_Sync_Settings::get_site2_key();
+                $secret = Inventory_Sync_Settings::get_site2_secret();
             }
+            
+            // بررسی اینکه تنظیمات درست تنظیم شده است
+            if (empty($url) || empty($key) || empty($secret)) {
+                wp_send_json_error('تنظیمات API برای سایت ' . $site . ' را تکمیل کنید');
+            }
+            
+            $api = new Inventory_Sync_API($url, $key, $secret);
+            $products = $api->get_products(100, $page);
+            
+            if (is_wp_error($products)) {
+                wp_send_json_error('خطا در دریافت محصولات: ' . $products->get_error_message());
+            }
+            
+            if (empty($products)) {
+                wp_send_json_success([]);
+            }
+            
+            // فیلتر: محصولات نشده‌مرتبط
+            $mapped_ids = $wpdb->get_col(
+                $wpdb->prepare(
+                    "SELECT DISTINCT " . ($site === 'site1' ? 'site1_product_id' : 'site2_product_id') . 
+                    " FROM {$wpdb->prefix}inventory_sync_mapping WHERE " . 
+                    ($site === 'site1' ? 'site1_product_id' : 'site2_product_id') . " IS NOT NULL"
+                )
+            );
+            
+            $filtered = [];
+            foreach ((array)$products as $p) {
+                $product_id = isset($p['id']) ? intval($p['id']) : 0;
+                
+                if ($product_id && !in_array($product_id, (array)$mapped_ids)) {
+                    // اضافه کردن اطلاعات مورد نیاز برای dropdown
+                    $filtered[] = [
+                        'id' => $product_id,
+                        'name' => $p['name'] ?? 'محصول بدون نام',
+                        'sku' => $p['sku'] ?? '',
+                        'stock_quantity' => $p['stock_quantity'] ?? 0,
+                        'type' => $p['type'] ?? 'simple'
+                    ];
+                }
+            }
+            
+            wp_send_json_success($filtered);
+        } catch (Exception $e) {
+            wp_send_json_error('خطا: ' . $e->getMessage());
         }
-        
-        wp_send_json_success($filtered);
     }
     
     public function ajax_sync_inventory() {
