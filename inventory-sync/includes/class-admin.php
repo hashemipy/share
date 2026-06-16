@@ -65,9 +65,13 @@ class Inventory_Sync_Admin {
             true
         );
         
+        // شناخت کنید یہ سائٹ 1 ہے یا سائٹ 2
+        $current_site = $this->get_current_site();
+        
         wp_localize_script('inventory-sync-admin', 'inventorySyncData', [
             'nonce' => wp_create_nonce('inventory_sync_nonce'),
             'ajaxurl' => admin_url('admin-ajax.php'),
+            'currentSite' => $current_site, // 'site1' یا 'site2'
             'i18n' => [
                 'saving' => __('ذخیره می‌شود...', 'inventory-sync'),
                 'saved' => __('ذخیره شد!', 'inventory-sync'),
@@ -292,6 +296,26 @@ class Inventory_Sync_Admin {
         wp_send_json_success($products);
     }
     
+    
+    /**
+     * موجودہ سائٹ کی شناخت کریں
+     */
+    private function get_current_site() {
+        $site1_url = Inventory_Sync_Settings::get_site1_url();
+        $site2_url = Inventory_Sync_Settings::get_site2_url();
+        $current_url = site_url();
+        
+        // موجودہ سائٹ کو شناخت دیں
+        if (!empty($site1_url) && strpos($current_url, $site1_url) === 0) {
+            return 'site1';
+        } elseif (!empty($site2_url) && strpos($current_url, $site2_url) === 0) {
+            return 'site2';
+        } else {
+            // ڈیفالٹ - ہم خود شاید سائٹ 1 ہیں
+            return 'site1';
+        }
+    }
+    
     /**
      * تمام محصولات (دونوں سائٹ)
      */
@@ -302,49 +326,96 @@ class Inventory_Sync_Admin {
             wp_send_json_error('رسائی نہیں');
         }
         
-        // Site 1 محصولات (لوکل)
-        $site1_products = wc_get_products(['limit' => 500, 'status' => 'publish']);
-        $site1_data = array_map(function($p) {
-            return [
-                'id' => $p->get_id(),
-                'name' => $p->get_name(),
-                'sku' => $p->get_sku()
-            ];
-        }, $site1_products);
+        $current_site = $this->get_current_site();
         
-        $site2_data = [];
-        
-        // سائٹ 2 محصولات (remote API)
-        $site2_url = Inventory_Sync_Settings::get_site2_url();
-        $site2_key = Inventory_Sync_Settings::get_site2_key();
-        $site2_secret = Inventory_Sync_Settings::get_site2_secret();
-        
-        if (!empty($site2_url) && !empty($site2_key) && !empty($site2_secret)) {
-            try {
-                $api = new Inventory_Sync_API($site2_url, $site2_key, $site2_secret);
-                $products = $api->get_products(500);
-                
-                if (is_wp_error($products)) {
-                    error_log('[Inventory Sync] Site2 API Error: ' . $products->get_error_message());
-                    $site2_data = [];
-                } elseif (is_array($products)) {
-                    $site2_data = array_map(function($p) {
-                        return [
-                            'id' => isset($p['id']) ? $p['id'] : 0,
-                            'name' => isset($p['name']) ? $p['name'] : '',
-                            'sku' => isset($p['sku']) ? $p['sku'] : ''
-                        ];
-                    }, $products);
+        // Site 1 محصولات
+        $site1_data = [];
+        if ($current_site === 'site1') {
+            // سائٹ 1 میں ہیں - لوکل محصولات
+            $site1_products = wc_get_products(['limit' => 500, 'status' => 'publish']);
+            $site1_data = array_map(function($p) {
+                return [
+                    'id' => $p->get_id(),
+                    'name' => $p->get_name(),
+                    'sku' => $p->get_sku()
+                ];
+            }, $site1_products);
+        } else {
+            // سائٹ 2 میں ہیں - سائٹ 1 سے Remote API
+            $site1_url = Inventory_Sync_Settings::get_site1_url();
+            $site1_key = Inventory_Sync_Settings::get_site1_key();
+            $site1_secret = Inventory_Sync_Settings::get_site1_secret();
+            
+            if (!empty($site1_url) && !empty($site1_key) && !empty($site1_secret)) {
+                try {
+                    $api = new Inventory_Sync_API($site1_url, $site1_key, $site1_secret);
+                    $products = $api->get_products(500);
+                    
+                    if (is_wp_error($products)) {
+                        error_log('[Inventory Sync] Site1 API Error: ' . $products->get_error_message());
+                        $site1_data = [];
+                    } elseif (is_array($products)) {
+                        $site1_data = array_map(function($p) {
+                            return [
+                                'id' => isset($p['id']) ? $p['id'] : 0,
+                                'name' => isset($p['name']) ? $p['name'] : '',
+                                'sku' => isset($p['sku']) ? $p['sku'] : ''
+                            ];
+                        }, $products);
+                    }
+                } catch (Exception $e) {
+                    error_log('[Inventory Sync] Site1 Exception: ' . $e->getMessage());
+                    $site1_data = [];
                 }
-            } catch (Exception $e) {
-                error_log('[Inventory Sync] Exception: ' . $e->getMessage());
-                $site2_data = [];
+            }
+        }
+        
+        // Site 2 محصولات
+        $site2_data = [];
+        if ($current_site === 'site2') {
+            // سائٹ 2 میں ہیں - لوکل محصولات
+            $site2_products = wc_get_products(['limit' => 500, 'status' => 'publish']);
+            $site2_data = array_map(function($p) {
+                return [
+                    'id' => $p->get_id(),
+                    'name' => $p->get_name(),
+                    'sku' => $p->get_sku()
+                ];
+            }, $site2_products);
+        } else {
+            // سائٹ 1 میں ہیں - سائٹ 2 سے Remote API
+            $site2_url = Inventory_Sync_Settings::get_site2_url();
+            $site2_key = Inventory_Sync_Settings::get_site2_key();
+            $site2_secret = Inventory_Sync_Settings::get_site2_secret();
+            
+            if (!empty($site2_url) && !empty($site2_key) && !empty($site2_secret)) {
+                try {
+                    $api = new Inventory_Sync_API($site2_url, $site2_key, $site2_secret);
+                    $products = $api->get_products(500);
+                    
+                    if (is_wp_error($products)) {
+                        error_log('[Inventory Sync] Site2 API Error: ' . $products->get_error_message());
+                        $site2_data = [];
+                    } elseif (is_array($products)) {
+                        $site2_data = array_map(function($p) {
+                            return [
+                                'id' => isset($p['id']) ? $p['id'] : 0,
+                                'name' => isset($p['name']) ? $p['name'] : '',
+                                'sku' => isset($p['sku']) ? $p['sku'] : ''
+                            ];
+                        }, $products);
+                    }
+                } catch (Exception $e) {
+                    error_log('[Inventory Sync] Site2 Exception: ' . $e->getMessage());
+                    $site2_data = [];
+                }
             }
         }
         
         $data = [
             'site1' => $site1_data,
-            'site2' => $site2_data
+            'site2' => $site2_data,
+            'current_site' => $current_site
         ];
         
         wp_send_json_success($data);

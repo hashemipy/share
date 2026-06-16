@@ -471,6 +471,7 @@
         
         // === Mapping Management ===
         loadProductSelects: function() {
+            console.log('[v0] Loading products for site:', inventorySyncData.currentSite);
             $.ajax({
                 url: inventorySyncData.ajaxurl,
                 type: 'POST',
@@ -479,9 +480,13 @@
                     _ajax_nonce: inventorySyncData.nonce
                 },
                 success: (response) => {
+                    console.log('[v0] Products loaded:', response);
                     if (response.success && response.data) {
                         const site1 = response.data.site1 || [];
                         const site2 = response.data.site2 || [];
+                        
+                        console.log('[v0] Site 1 products count:', site1.length);
+                        console.log('[v0] Site 2 products count:', site2.length);
                         
                         this.populateSelect('#site1-product-select', site1);
                         this.populateSelect('#site2-product-select', site2);
@@ -490,7 +495,7 @@
                     }
                 },
                 error: (xhr, status, error) => {
-                    console.error('[v0] AJAX error loading products:', error);
+                    console.error('[v0] AJAX error loading products:', error, xhr);
                 }
             });
         },
@@ -516,6 +521,7 @@
         },
         
         loadMappings: function() {
+            console.log('[v0] Loading mappings...');
             $.ajax({
                 url: inventorySyncData.ajaxurl,
                 type: 'POST',
@@ -524,6 +530,7 @@
                     _ajax_nonce: inventorySyncData.nonce
                 },
                 success: (response) => {
+                    console.log('[v0] Mappings loaded:', response);
                     if (response.success) {
                         this.renderMappings(response.data);
                     } else {
