@@ -22,6 +22,10 @@
             // Mapping
             $(document).on('click', '.sync-all-btn', this.syncAllInventory.bind(this));
             $(document).on('click', '.product-item', this.selectProduct.bind(this));
+            $(document).on('click', '.create-mapping-btn', this.createMapping.bind(this));
+            $(document).on('click', '.delete-mapping-btn', this.deleteMapping.bind(this));
+            $(document).on('keyup', '.site1-search', this.filterProducts.bind(this));
+            $(document).on('keyup', '.site2-search', this.filterProducts.bind(this));
             
             // Transfer
             $(document).on('click', '#select-all-transfer', this.toggleSelectAll.bind(this));
@@ -33,6 +37,7 @@
         loadInitialData: function() {
             this.loadProducts('site1');
             this.loadProducts('site2');
+            this.loadExistingMappings();
             this.loadTransferProducts();
             this.loadTransferredProducts();
             this.loadLogs();
@@ -194,14 +199,223 @@
         },
         
         selectProduct: function(e) {
-            $(e.target).closest('.product-item').toggleClass('selected');
+            const $item = $(e.target).closest('.product-item');
+            const site = $item.attr('data-site');
+            const isSelected = $item.hasClass('selected');
+            
+            // تنها یک محصول از هر سایت می‌تواند انتخاب شود
+            $(`.product-item[data-site="${site}"]`).removeClass('selected');
+            
+            if (!isSelected) {
+                $item.addClass('selected');
+            }
+            
+            this.updateMappingButtonState();
+        },
+        
+        updateMappingButtonState: function() {
+            const site1Selected = $('.site1-products .product-item.selected').length > 0;
+            const site2Selected = $('.site2-products .product-item.selected').length > 0;
+            
+            const $btn = $('.create-mapping-btn');
+            const $site1Info = $('.site1-selected');
+            const $site2Info = $('.site2-selected');
+            
+            if (site1Selected) {
+                const $selected = $('.site1-products .product-item.selected');
+                $site1Info.html(`✓ ${$selected.find('.product-name').text()}`);
+            } else {
+                $site1Info.html('');
+            }
+            
+            if (site2Selected) {
+                const $selected = $('.site2-products .product-item.selected');
+                $site2Info.html(`✓ ${$selected.find('.product-name').text()}`);
+            } else {
+                $site2Info.html('');
+            }
+            
+            $btn.prop('disabled', !(site1Selected && site2Selected));
+        },
+        
+        filterProducts: function(e) {
+            const $input = $(e.target);
+            const searchTerm = $input.val().toLowerCase();
+            const isSite1 = $input.hasClass('site1-search');
+            const $container = isSite1 ? $('.site1-products') : $('.site2-products');
+            
+            $container.find('.product-item').each(function() {
+                const $item = $(this);
+                const name = $item.find('.product-name').text().toLowerCase();
+                const sku = $item.find('.product-sku').text().toLowerCase();
+                
+                if (name.includes(searchTerm) || sku.includes(searchTerm)) {
+                    $item.show();
+                } else {
+                    $item.hide();
+                }
+            });
+        },
+        
+        createMapping: function(e) {
+            e.preventDefault();
+            
+            const $site1Selected = $('.site1-products .product-item.selected');
+            const $site2Selected = $('.site2-products .product-item.selected');
+            
+            if (!$site1Selected.length || !$site2Selected.length) {
+                alert(inventorySyncData.i18n.selectProducts);
+                return;
+            }
+            
+            const site1Id = $site1Selected.attr('data-id');
+            const site1Sku = $site1Selected.find('.product-sku').text().replace('SKU: ', '');
+            const site2Id = $site2Selected.attr('data-id');
+            const site2Sku = $site2Selected.find('.product-sku').text().replace('SKU: ', '');
+            
+            const $btn = $('.create-mapping-btn');
+            const originalText = $btn.text();
+            $btn.attr('disabled', true).text(inventorySyncData.i18n.saving);
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_save_mapping',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    site1_id: site1Id,
+                    site2_id: site2Id,
+                    site1_sku: site1Sku,
+                    site2_sku: site2Sku
+                },
+                success: (response) => {
+                    if (response.success) {
+                        alert('✓ ' + response.data);
+                        
+                        // پاک کن انتخاب
+                        $('.product-item').removeClass('selected');
+                        this.updateMappingButtonState();
+                        
+                        // بارگذاری دوباره لیست مرتبط‌ها
+                        this.loadExistingMappings();
+                    } else {
+                        alert('✗ ' + response.data);
+                    }
+                },
+                error: () => {
+                    alert('✗ ' + inventorySyncData.i18n.error);
+                },
+                complete: () => {
+                    $btn.attr('disabled', false).text(originalText);
+                }
+            });
+        },
+        
+        deleteMapping: function(e) {
+            e.preventDefault();
+            
+            if (!confirm('آیا می‌خواهید این مرتبط را حذف کنید؟')) {
+                return;
+            }
+            
+            const $btn = $(e.target);
+            const mappingId = $btn.attr('data-mapping-id');
+            const originalText = $btn.text();
+            
+            $btn.attr('disabled', true).text(inventorySyncData.i18n.saving);
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_delete_mapping',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    mapping_id: mappingId
+                },
+                success: (response) => {
+                    if (response.success) {
+                        alert('✓ مرتبط حذف شد');
+                        this.loadExistingMappings();
+                    } else {
+                        alert('✗ ' + response.data);
+                    }
+                },
+                error: () => {
+                    alert('✗ ' + inventorySyncData.i18n.error);
+                },
+                complete: () => {
+                    $btn.attr('disabled', false).text(originalText);
+                }
+            });
+        },
+        
+        loadExistingMappings: function() {
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_get_mappings',
+                    _ajax_nonce: inventorySyncData.nonce
+                },
+                success: (response) => {
+                    if (response.success) {
+                        this.renderExistingMappings(response.data);
+                    }
+                },
+                error: () => {
+                    console.error('خطا در بارگذاری مرتبط‌ها');
+                }
+            });
+        },
+        
+        renderExistingMappings: function(mappings) {
+            const $tbody = $('.existing-mappings-list');
+            
+            if (!mappings || mappings.length === 0) {
+                $tbody.html(
+                    '<tr><td colspan="9" class="text-center">📭 هیچ مرتبطی وجود ندارد</td></tr>'
+                );
+                return;
+            }
+            
+            let html = '';
+            mappings.forEach(mapping => {
+                const statusClass = mapping.sync_status === 'synced' ? 'success' : 
+                                   (mapping.sync_status === 'error' ? 'error' : 'pending');
+                const statusText = mapping.sync_status === 'synced' ? '✓ هماهنگ' : 
+                                  (mapping.sync_status === 'error' ? '✗ خطا' : '⏳ معلق');
+                const lastSync = mapping.last_sync ? new Date(mapping.last_sync).toLocaleString('fa-IR') : '—';
+                
+                html += `
+                    <tr>
+                        <td><strong>${mapping.site1_product_name || 'محصول ' + mapping.site1_product_id}</strong></td>
+                        <td>${mapping.site1_sku || '—'}</td>
+                        <td>${mapping.site1_stock || '0'}</td>
+                        <td style="text-align: center; color: #999;">↔</td>
+                        <td><strong>${mapping.site2_product_name || 'محصول ' + mapping.site2_product_id}</strong></td>
+                        <td>${mapping.site2_sku || '—'}</td>
+                        <td>${mapping.site2_stock || '0'}</td>
+                        <td>
+                            <span class="status-badge ${statusClass}">${statusText}</span>
+                            <br><small style="color: #999;">${lastSync}</small>
+                        </td>
+                        <td>
+                            <button class="button button-small delete-mapping-btn" data-mapping-id="${mapping.id}">
+                                🗑️ حذف
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            $tbody.html(html);
         },
         
         // === Inventory Sync ===
         syncAllInventory: function(e) {
             e.preventDefault();
             
-            if (!confirm('آیا می‌خواهید تمام موجودی‌ها را هماهنگ کنید؟')) {
+            if (!confirm('آیا می‌خواهید تمام موجودی‌های مرتبط را هماهنگ کنید؟')) {
                 return;
             }
             
@@ -210,13 +424,35 @@
             
             $btn.attr('disabled', true).text(inventorySyncData.i18n.syncing);
             
-            // Here you would fetch all mappings and sync them
-            // For now, just show a message
-            
-            setTimeout(() => {
-                alert('✓ هماهنگ‌سازی کامل شد!');
-                $btn.attr('disabled', false).text(originalText);
-            }, 1000);
+            // برای هر مرتبط، sync کن
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_sync_all_mappings',
+                    _ajax_nonce: inventorySyncData.nonce
+                },
+                success: (response) => {
+                    if (response.success) {
+                        const results = response.data;
+                        const successful = results.filter(r => r.success).length;
+                        const failed = results.filter(r => !r.success).length;
+                        
+                        alert(`✓ هماهنگ‌سازی کامل شد!\nموفق: ${successful}\nناموفق: ${failed}`);
+                        
+                        // بارگذاری دوباره
+                        this.loadExistingMappings();
+                    } else {
+                        alert('✗ ' + response.data);
+                    }
+                },
+                error: () => {
+                    alert('✗ ' + inventorySyncData.i18n.error);
+                },
+                complete: () => {
+                    $btn.attr('disabled', false).text(originalText);
+                }
+            });
         },
         
         // === Transfer Management ===

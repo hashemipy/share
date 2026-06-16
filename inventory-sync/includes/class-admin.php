@@ -18,7 +18,10 @@ class Inventory_Sync_Admin {
         add_action('wp_ajax_inventory_sync_save_settings', [$this, 'ajax_save_settings']);
         add_action('wp_ajax_inventory_sync_get_products', [$this, 'ajax_get_products']);
         add_action('wp_ajax_inventory_sync_save_mapping', [$this, 'ajax_save_mapping']);
+        add_action('wp_ajax_inventory_sync_delete_mapping', [$this, 'ajax_delete_mapping']);
+        add_action('wp_ajax_inventory_sync_get_mappings', [$this, 'ajax_get_mappings']);
         add_action('wp_ajax_inventory_sync_sync_inventory', [$this, 'ajax_sync_inventory']);
+        add_action('wp_ajax_inventory_sync_sync_all_mappings', [$this, 'ajax_sync_all_mappings']);
         add_action('wp_ajax_inventory_sync_transfer_products', [$this, 'ajax_transfer_products']);
         add_action('wp_ajax_inventory_sync_get_logs', [$this, 'ajax_get_logs']);
         add_action('wp_ajax_inventory_sync_get_transferred_products', [$this, 'ajax_get_transferred_products']);
@@ -182,6 +185,20 @@ class Inventory_Sync_Admin {
             wp_send_json_error('شناسه‌های محصول مورد نیاز است');
         }
         
+        // بررسی اینکه mapping قبلاً وجود دارد یا نه
+        $existing = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}inventory_sync_mapping 
+                 WHERE site1_product_id = %d AND site2_product_id = %d",
+                $site1_id,
+                $site2_id
+            )
+        );
+        
+        if ($existing) {
+            wp_send_json_error('این مرتبط قبلاً وجود دارد');
+        }
+        
         $result = $wpdb->insert(
             $wpdb->prefix . 'inventory_sync_mapping',
             [
@@ -189,15 +206,103 @@ class Inventory_Sync_Admin {
                 'site2_product_id' => $site2_id,
                 'site1_sku' => $site1_sku,
                 'site2_sku' => $site2_sku,
-                'sync_enabled' => 1
+                'sync_enabled' => 1,
+                'sync_status' => 'pending'
             ]
         );
         
         if ($result) {
-            wp_send_json_success('نقشه‌برداری ذخیره شد');
+            wp_send_json_success('مرتبط با موفقیت ایجاد شد');
         } else {
-            wp_send_json_error('خطا در ذخیره');
+            wp_send_json_error('خطا در ذخیره: ' . $wpdb->last_error);
         }
+    }
+    
+    public function ajax_delete_mapping() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('عدم دسترسی');
+        }
+        
+        global $wpdb;
+        
+        $mapping_id = intval($_POST['mapping_id'] ?? 0);
+        
+        if (!$mapping_id) {
+            wp_send_json_error('شناسه مرتبط مورد نیاز است');
+        }
+        
+        $result = $wpdb->delete(
+            $wpdb->prefix . 'inventory_sync_mapping',
+            ['id' => $mapping_id],
+            ['%d']
+        );
+        
+        if ($result) {
+            wp_send_json_success('مرتبط حذف شد');
+        } else {
+            wp_send_json_error('خطا در حذف: ' . $wpdb->last_error);
+        }
+    }
+    
+    public function ajax_get_mappings() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('عدم دسترسی');
+        }
+        
+        global $wpdb;
+        
+        $mappings = $wpdb->get_results(
+            "SELECT m.*, 
+                    p1.post_title as site1_product_name,
+                    p2.post_title as site2_product_name
+             FROM {$wpdb->prefix}inventory_sync_mapping m
+             LEFT JOIN {$wpdb->prefix}posts p1 ON m.site1_product_id = p1.ID
+             LEFT JOIN {$wpdb->prefix}posts p2 ON m.site2_product_id = p2.ID
+             ORDER BY m.created_at DESC"
+        );
+        
+        // اضافه کردن اطلاعات موجودی
+        if ($mappings) {
+            foreach ($mappings as $mapping) {
+                // برای موجودی، می‌توانیم از WooCommerce API استفاده کنیم یا خالی بگذاریم
+                $mapping->site1_stock = '—';
+                $mapping->site2_stock = '—';
+            }
+        }
+        
+        wp_send_json_success($mappings ?: []);
+    }
+    
+    public function ajax_sync_all_mappings() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('عدم دسترسی');
+        }
+        
+        global $wpdb;
+        
+        $mappings = $wpdb->get_results(
+            "SELECT id FROM {$wpdb->prefix}inventory_sync_mapping WHERE sync_enabled = 1"
+        );
+        
+        $sync_manager = Inventory_Sync_Manager::get_instance();
+        $results = [];
+        
+        foreach ($mappings as $mapping) {
+            $result = $sync_manager->sync_inventory($mapping->id);
+            $results[] = [
+                'mapping_id' => $mapping->id,
+                'success' => !is_wp_error($result),
+                'message' => is_wp_error($result) ? $result->get_error_message() : 'موفق'
+            ];
+        }
+        
+        wp_send_json_success($results);
     }
     
     public function ajax_sync_inventory() {
