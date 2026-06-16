@@ -31,6 +31,9 @@ class Inventory_Sync_Admin {
         add_action('wp_ajax_inventory_sync_sync_mapping', [$this, 'ajax_sync_mapping']);
         add_action('wp_ajax_inventory_sync_toggle_mapping', [$this, 'ajax_toggle_mapping']);
         add_action('wp_ajax_inventory_sync_delete_mapping', [$this, 'ajax_delete_mapping']);
+        
+        // Debug endpoint
+        add_action('wp_ajax_inventory_sync_debug', [$this, 'ajax_debug']);
     }
     
     public function add_menu() {
@@ -540,5 +543,30 @@ class Inventory_Sync_Admin {
         );
         
         wp_send_json_success('حذف ہو گیا');
+    }
+    
+    /**
+     * ڈیبگ endpoint
+     */
+    public function ajax_debug() {
+        $info = [
+            'woocommerce_loaded' => function_exists('wc_get_products'),
+            'products_count' => 0,
+            'error' => null
+        ];
+        
+        try {
+            if (function_exists('wc_get_products')) {
+                $products = wc_get_products(['limit' => 10, 'status' => 'publish']);
+                $info['products_count'] = count($products);
+                $info['first_product'] = $products ? $products[0]->get_name() : null;
+            } else {
+                $info['error'] = 'wc_get_products موجود نہیں';
+            }
+        } catch (Exception $e) {
+            $info['error'] = $e->getMessage();
+        }
+        
+        wp_send_json_success($info);
     }
 }
