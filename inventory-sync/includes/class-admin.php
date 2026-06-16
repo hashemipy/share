@@ -302,6 +302,47 @@ class Inventory_Sync_Admin {
             wp_send_json_error('رسائی نہیں');
         }
         
+        $site1_products = wc_get_products(['limit' => 500, 'status' => 'publish']);
+        $site2_products = [];
+        
+        // اگر remote API ہے تو سائٹ 2 سے بھی حاصل کریں
+        try {
+            $api = new Inventory_Sync_API(
+                Inventory_Sync_Settings::get_site2_url(),
+                Inventory_Sync_Settings::get_site2_key(),
+                Inventory_Sync_Settings::get_site2_secret()
+            );
+            
+            $response = $api->get_products(500);
+            
+            if (is_array($response) && !isset($response['code'])) {
+                // فرمت‌کردن داده‌های سائٹ 2
+                $site2_products = array_map(function($p) {
+                    return [
+                        'id' => $p['id'] ?? null,
+                        'name' => $p['name'] ?? 'نامشخص',
+                        'sku' => $p['sku'] ?? ''
+                    ];
+                }, $response);
+            }
+        } catch (Exception $e) {
+            // API میں مسئلہ - خالی رہے گا
+        }
+        
+        $data = [
+            'site1' => array_map(function($p) {
+                return [
+                    'id' => $p->get_id(),
+                    'name' => $p->get_name(),
+                    'sku' => $p->get_sku() ?? ''
+                ];
+            }, $site1_products),
+            'site2' => $site2_products
+        ];
+        
+        wp_send_json_success($data);
+    }
+        
         error_log('[v0] Loading Site1 products...');
         
         $site1_products = wc_get_products(['limit' => 500, 'status' => 'publish']);
