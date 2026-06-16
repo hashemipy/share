@@ -18,9 +18,7 @@ if (!defined('ABSPATH')) exit;
         <a href="#settings" class="nav-tab nav-tab-active" data-tab="settings">
             <?php esc_html_e('⚙️ تنظیمات', 'inventory-sync'); ?>
         </a>
-        <a href="#mapping" class="nav-tab" data-tab="mapping">
-            <?php esc_html_e('🔗 مرتبط‌سازی محصولات', 'inventory-sync'); ?>
-        </a>
+
         <a href="#transfer" class="nav-tab" data-tab="transfer">
             <?php esc_html_e('📤 انتقال محصولات', 'inventory-sync'); ?>
         </a>
@@ -180,35 +178,7 @@ if (!defined('ABSPATH')) exit;
             </div>
         </div>
         
-        <!-- Mapping Tab -->
-        <div id="mapping" class="tab-pane">
-            <h2><?php esc_html_e('مرتبط‌سازی محصولات', 'inventory-sync'); ?></h2>
-            <p class="description">
-                <?php esc_html_e('محصولات سایت 1 و 2 را در کنار هم ببینید و آنها را مرتبط کنید', 'inventory-sync'); ?>
-            </p>
-            
-            <div class="mapping-container">
-                <div class="mapping-column">
-                    <h3><?php esc_html_e('سایت 1 - محصولات', 'inventory-sync'); ?></h3>
-                    <div class="products-list site1-products">
-                        <p><?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?></p>
-                    </div>
-                </div>
-                
-                <div class="mapping-column">
-                    <h3><?php esc_html_e('سایت 2 - محصولات', 'inventory-sync'); ?></h3>
-                    <div class="products-list site2-products">
-                        <p><?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?></p>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="mapping-actions">
-                <button class="button button-primary sync-all-btn">
-                    <?php esc_html_e('⚡ هماهنگ‌سازی همه موجودی‌ها', 'inventory-sync'); ?>
-                </button>
-            </div>
-        </div>
+
         
         <!-- Transfer Tab -->
         <div id="transfer" class="tab-pane">

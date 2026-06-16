@@ -19,9 +19,7 @@
             $(document).on('click', '.test-btn', this.testConnection.bind(this));
             $(document).on('click', '.save-settings-btn', this.saveSettings.bind(this));
             
-            // Mapping
-            $(document).on('click', '.sync-all-btn', this.syncAllInventory.bind(this));
-            $(document).on('click', '.product-item', this.selectProduct.bind(this));
+
             
             // Transfer
             $(document).on('click', '#select-all-transfer', this.toggleSelectAll.bind(this));
@@ -31,8 +29,6 @@
         },
         
         loadInitialData: function() {
-            this.loadProducts('site1');
-            this.loadProducts('site2');
             this.loadTransferProducts();
             this.loadTransferredProducts();
             this.loadLogs();
@@ -146,78 +142,7 @@
             });
         },
         
-        // === Product Management ===
-        loadProducts: function(site) {
-            const $container = site === 'site1' ? 
-                $('.site1-products') : $('.site2-products');
-            
-            $container.html('<p>' + inventorySyncData.i18n.loading + '</p>');
-            
-            $.ajax({
-                url: inventorySyncData.ajaxurl,
-                type: 'POST',
-                data: {
-                    action: 'inventory_sync_get_products',
-                    _ajax_nonce: inventorySyncData.nonce,
-                    site: site,
-                    page: 1
-                },
-                success: (response) => {
-                    if (response.success) {
-                        this.renderProducts($container, response.data, site);
-                    }
-                },
-                error: () => {
-                    $container.html('<p class="alert alert-error">' + inventorySyncData.i18n.error + '</p>');
-                }
-            });
-        },
-        
-        renderProducts: function($container, products, site) {
-            if (!products || products.length === 0) {
-                $container.html('<p>' + inventorySyncData.i18n.selectProducts + '</p>');
-                return;
-            }
-            
-            let html = '';
-            products.forEach(product => {
-                html += `
-                    <div class="product-item" data-site="${site}" data-id="${product.id}">
-                        <div class="product-name">${product.name}</div>
-                        <div class="product-sku">SKU: ${product.sku || 'N/A'}</div>
-                        <div class="product-stock">📦 موجودی: ${product.stock_quantity || 0}</div>
-                    </div>
-                `;
-            });
-            
-            $container.html(html);
-        },
-        
-        selectProduct: function(e) {
-            $(e.target).closest('.product-item').toggleClass('selected');
-        },
-        
-        // === Inventory Sync ===
-        syncAllInventory: function(e) {
-            e.preventDefault();
-            
-            if (!confirm('آیا می‌خواهید تمام موجودی‌ها را هماهنگ کنید؟')) {
-                return;
-            }
-            
-            const $btn = $(e.target);
-            const originalText = $btn.text();
-            
-            $btn.attr('disabled', true).text(inventorySyncData.i18n.syncing);
-            
-            // Here you would fetch all mappings and sync them
-            // For now, just show a message
-            
-            setTimeout(() => {
-                alert('✓ هماهنگ‌سازی کامل شد!');
-                $btn.attr('disabled', false).text(originalText);
-            }, 1000);
-        },
+
         
         // === Transfer Management ===
         loadTransferProducts: function() {
