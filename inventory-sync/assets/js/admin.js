@@ -28,6 +28,7 @@
             $(document).on('click', '.product-item', this.selectProduct.bind(this));
             $(document).on('click', '#create-mapping-btn', this.createMapping.bind(this));
             $(document).on('click', '#clear-selection-btn', this.clearSelection.bind(this));
+            $(document).on('click', '#reload-products-btn', this.reloadAllProducts.bind(this));
             $(document).on('click', '#manual-sync-btn', this.manualSyncAll.bind(this));
             $(document).on('click', '.delete-mapping-btn', this.deleteMapping.bind(this));
             $(document).on('keyup', '#search-site1', this.filterProducts.bind(this, 'site1'));
@@ -41,6 +42,15 @@
         },
         
         loadInitialData: function() {
+            console.log('[v0] Loading initial data...');
+            
+            const siteRole = $('input[name="current_site_role"]:checked').val();
+            console.log('[v0] Current site role from form:', siteRole);
+            console.log('[v0] All radio buttons:', $('input[name="current_site_role"]').map((i, el) => ({
+                value: $(el).val(),
+                checked: $(el).is(':checked')
+            })).get());
+            
             this.loadProducts('site1');
             this.loadProducts('site2');
             this.loadTransferProducts();
@@ -72,14 +82,17 @@
         
         updateTabsVisibility: function() {
             const currentSiteRole = $('input[name="current_site_role"]:checked').val();
+            console.log('[v0] updateTabsVisibility - current role:', currentSiteRole);
             
             if (currentSiteRole === 'site2') {
                 // Hide mapping and transfer tabs for site 2
+                console.log('[v0] Hiding mapping/transfer tabs for site 2');
                 $('a.nav-tab[data-tab="mapping"]').hide();
                 $('a.nav-tab[data-tab="transfer"]').hide();
                 $('a.nav-tab[data-tab="transferred"]').hide();
             } else {
                 // Show all tabs for site 1
+                console.log('[v0] Showing all tabs for site 1');
                 $('a.nav-tab[data-tab="mapping"]').show();
                 $('a.nav-tab[data-tab="transfer"]').show();
                 $('a.nav-tab[data-tab="transferred"]').show();
@@ -88,36 +101,12 @@
         
         updateSiteRole: function(e) {
             const newRole = $('input[name="current_site_role"]:checked').val();
-            
-            // Save to database via AJAX
-            $.ajax({
-                url: inventorySyncData.ajaxurl,
-                type: 'POST',
-                data: {
-                    action: 'inventory_sync_save_settings',
-                    _ajax_nonce: inventorySyncData.nonce,
-                    current_site_role: newRole,
-                    site1_name: $('#site1_name').val(),
-                    site1_url: $('#site1_url').val(),
-                    site1_key: $('#site1_key').val(),
-                    site1_secret: $('#site1_secret').val(),
-                    site2_name: $('#site2_name').val(),
-                    site2_url: $('#site2_url').val(),
-                    site2_key: $('#site2_key').val(),
-                    site2_secret: $('#site2_secret').val(),
-                    sync_direction: $('#sync_direction').val(),
-                    auto_sync_enabled: $('#auto_sync_enabled').is(':checked') ? 1 : 0
-                },
-                success: (response) => {
-                    if (response.success) {
-                        this.updateTabsVisibility();
-                    }
-                }
-            });
+            console.log('[v0] updateSiteRole called - new role:', newRole);
         },
         
         quickSaveSettings: function(e) {
             const newRole = $('input[name="current_site_role"]:checked').val();
+            console.log('[v0] quickSaveSettings - new role:', newRole);
             
             // فقط نقش سایت را به سرعت ذخیره کن
             $.ajax({
@@ -139,9 +128,13 @@
                     auto_sync_enabled: $('#auto_sync_enabled').is(':checked') ? 1 : 0
                 },
                 success: (response) => {
+                    console.log('[v0] Settings saved successfully:', response);
                     if (response.success) {
                         this.updateTabsVisibility();
                     }
+                },
+                error: (err) => {
+                    console.log('[v0] Error saving settings:', err);
                 }
             });
         },
@@ -193,12 +186,18 @@
             const $btn = $(e.target);
             const originalText = $btn.text();
             
+            console.log('[v0] saveSettings called');
+            
             $btn.attr('disabled', true).text(inventorySyncData.i18n.saving);
+            
+            const siteRole = $('input[name="current_site_role"]:checked').val();
+            console.log('[v0] Current site role:', siteRole);
+            console.log('[v0] Site 1 URL:', $('#site1_url').val());
             
             const data = {
                 action: 'inventory_sync_save_settings',
                 _ajax_nonce: inventorySyncData.nonce,
-                current_site_role: $('input[name="current_site_role"]:checked').val(),
+                current_site_role: siteRole,
                 site1_name: $('#site1_name').val(),
                 site1_url: $('#site1_url').val(),
                 site1_key: $('#site1_key').val(),
@@ -211,11 +210,14 @@
                 auto_sync_enabled: $('#auto_sync_enabled').is(':checked') ? 1 : 0
             };
             
+            console.log('[v0] Form data:', data);
+
             $.ajax({
                 url: inventorySyncData.ajaxurl,
                 type: 'POST',
                 data: data,
                 success: (response) => {
+                    console.log('[v0] Save success:', response);
                     if (response.success) {
                         const message = response.data.message || response.data;
                         $('.form-actions .status-message')
@@ -229,6 +231,18 @@
                         }
                     }
                 },
+                error: (err) => {
+                    console.log('[v0] Save error:', err);
+                    $('.form-actions .status-message')
+                        .removeClass('success')
+                        .addClass('error')
+                        .text('✗ ' + inventorySyncData.i18n.error);
+                },
+                complete: () => {
+                    $btn.attr('disabled', false).text(originalText);
+                }
+            });
+        },
                 error: () => {
                     $('.form-actions .status-message')
                         .removeClass('success')
@@ -246,6 +260,7 @@
             const $container = site === 'site1' ? 
                 $('.site1-products') : $('.site2-products');
             
+            console.log('[v0] loadProducts:', site);
             $container.html('<p>درحال بارگذاری محصولات...</p>');
             
             $.ajax({
@@ -258,6 +273,7 @@
                     page: 1
                 },
                 success: (response) => {
+                    console.log('[v0] Products loaded for', site, ':', response);
                     if (response.success && response.data) {
                         this.renderProducts($container, response.data, site);
                     } else {
@@ -268,7 +284,8 @@
                         );
                     }
                 },
-                error: () => {
+                error: (err) => {
+                    console.log('[v0] Error loading products for', site, ':', err);
                     $container.html(
                         '<p class="alert alert-error">❌ خطا در بارگذاری محصولات. ' +
                         'اتصالات سایت یا تنظیمات را بررسی کنید.</p>'
@@ -500,6 +517,13 @@
                 const text = $(this).text().toLowerCase();
                 $(this).toggle(text.includes(searchTerm));
             });
+        },
+        
+        reloadAllProducts: function(e) {
+            e.preventDefault();
+            console.log('[v0] Reloading all products...');
+            this.loadProducts('site1');
+            this.loadProducts('site2');
         },
         
         manualSyncAll: function(e) {
@@ -814,6 +838,7 @@
     
     // Initialize on document ready
     $(document).ready(function() {
+        console.log('[v0] Initializing app...');
         app.init();
     });
     

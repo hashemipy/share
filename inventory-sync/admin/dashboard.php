@@ -220,7 +220,10 @@ if (!defined('ABSPATH')) exit;
                     <h3><?php esc_html_e('📤 سایت 1 - محصولات (انتخاب کنید)', 'inventory-sync'); ?></h3>
                     <input type="text" id="search-site1" class="form-control" placeholder="<?php esc_html_e('جستجو در محصولات سایت 1...', 'inventory-sync'); ?>" style="margin-bottom: 10px;">
                     <div class="products-list site1-products" style="max-height: 500px; overflow-y: auto; border: 1px solid #eee; border-radius: 3px; padding: 10px;">
-                        <p><?php esc_html_e('درحال بارگذاری محصولات...', 'inventory-sync'); ?></p>
+                        <p>💡 اگر محصولی دیده نمی‌شود، محصولات را بارگذاری نکنید: <br>
+                        <small>1. تنظیمات اتصالات سایت‌ها را بررسی کنید<br>
+                        2. دکمه "ذخیره تنظیمات" را بزنید<br>
+                        3. صفحه را رفرش کنید</small></p>
                     </div>
                 </div>
                 
@@ -234,7 +237,10 @@ if (!defined('ABSPATH')) exit;
                     <h3><?php esc_html_e('📥 سایت 2 - محصولات (انتخاب کنید)', 'inventory-sync'); ?></h3>
                     <input type="text" id="search-site2" class="form-control" placeholder="<?php esc_html_e('جستجو در محصولات سایت 2...', 'inventory-sync'); ?>" style="margin-bottom: 10px;">
                     <div class="products-list site2-products" style="max-height: 500px; overflow-y: auto; border: 1px solid #eee; border-radius: 3px; padding: 10px;">
-                        <p><?php esc_html_e('درحال بارگذاری محصولات...', 'inventory-sync'); ?></p>
+                        <p>💡 اگر محصولی دیده نمی‌شود، محصولات را بارگذاری نکنید: <br>
+                        <small>1. تنظیمات اتصالات سایت‌ها را بررسی کنید<br>
+                        2. دکمه "ذخیره تنظیمات" را بزنید<br>
+                        3. صفحه را رفرش کنید</small></p>
                     </div>
                 </div>
             </div>
@@ -267,7 +273,10 @@ if (!defined('ABSPATH')) exit;
                     <button class="button button-secondary" id="clear-selection-btn">
                         <?php esc_html_e('❌ حذف انتخاب', 'inventory-sync'); ?>
                     </button>
-                    <button class="button button-success" id="manual-sync-btn" style="margin-left: auto;">
+                    <button class="button" id="reload-products-btn" style="margin-left: auto;">
+                        <?php esc_html_e('🔄 بارگذاری دوباره محصولات', 'inventory-sync'); ?>
+                    </button>
+                    <button class="button button-success" id="manual-sync-btn">
                         <?php esc_html_e('⚡ هماهنگ‌سازی همه مرتبط‌سازی‌ها', 'inventory-sync'); ?>
                     </button>
                 </div>

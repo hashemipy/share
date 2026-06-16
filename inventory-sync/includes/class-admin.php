@@ -148,6 +148,8 @@ class Inventory_Sync_Admin {
         $site = sanitize_text_field($_POST['site'] ?? 'site1');
         $page = intval($_POST['page'] ?? 1);
         
+        error_log('[v0] ajax_get_products - site: ' . $site . ', page: ' . $page);
+        
         // بررسی اتصالات برای سایت درخواست‌شده
         if ($site === 'site1') {
             $url = Inventory_Sync_Settings::get_site1_url();
@@ -161,29 +163,38 @@ class Inventory_Sync_Admin {
             $url = $key = $secret = '';
         }
         
+        error_log('[v0] ajax_get_products - url: ' . (!empty($url) ? 'set' : 'empty'));
+        
         // اگر اتصالات کامل و معتبر نبود، محصولات محلی را برگردان
         if (empty($url) || empty($key) || empty($secret)) {
+            error_log('[v0] ajax_get_products - using local products');
             $products = $this->get_local_products($page);
             if (empty($products)) {
+                error_log('[v0] ajax_get_products - no local products found');
                 wp_send_json_error('محصولی پیدا نشد و اتصالات سایت ' . ($site === 'site2' ? '۲' : '۱') . ' تنظیم نشده است.');
             }
+            error_log('[v0] ajax_get_products - returning ' . count($products) . ' local products');
             wp_send_json_success($products);
             return;
         }
         
         // تلاش برای اتصال به سایت دور
+        error_log('[v0] ajax_get_products - trying remote connection');
         $api = new Inventory_Sync_API($url, $key, $secret);
         $products = $api->get_products(50, $page);
         
         if (is_wp_error($products)) {
+            error_log('[v0] ajax_get_products - remote error: ' . $products->get_error_message());
             // اگر اتصال ناموفق بود، محصولات محلی را برگردان
             $local_products = $this->get_local_products($page);
             if (!empty($local_products)) {
+                error_log('[v0] ajax_get_products - returning local products as fallback');
                 wp_send_json_success($local_products);
             }
             wp_send_json_error('خطا در اتصال به سایت ' . ($site === 'site2' ? '۲' : '۱') . ': ' . $products->get_error_message());
         }
         
+        error_log('[v0] ajax_get_products - returning ' . count($products) . ' remote products');
         wp_send_json_success($products);
     }
     
@@ -194,15 +205,21 @@ class Inventory_Sync_Admin {
         $per_page = 50;
         $offset = ($page - 1) * $per_page;
         
+        error_log('[v0] get_local_products - page: ' . $page . ', per_page: ' . $per_page);
+        
         $args = [
             'post_type' => 'product',
             'posts_per_page' => $per_page,
             'paged' => $page,
-            'post_status' => 'publish'
+            'post_status' => 'publish',
+            'orderby' => 'date',
+            'order' => 'DESC'
         ];
         
         $products_query = new WP_Query($args);
         $products = [];
+        
+        error_log('[v0] get_local_products - found posts: ' . $products_query->post_count);
         
         if ($products_query->have_posts()) {
             while ($products_query->have_posts()) {
@@ -223,6 +240,8 @@ class Inventory_Sync_Admin {
         }
         
         wp_reset_postdata();
+        
+        error_log('[v0] get_local_products - returning ' . count($products) . ' products');
         
         return $products;
     }
