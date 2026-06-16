@@ -17,6 +17,7 @@ class Inventory_Sync_Plugin {
         require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-settings.php';
         require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-api.php';
         require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-category-attribute-sync.php';
+        require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-mapping-manager.php';
         require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-sync-manager.php';
         
         // Admin

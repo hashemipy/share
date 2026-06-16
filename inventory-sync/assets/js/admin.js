@@ -18,10 +18,13 @@
             // Settings
             $(document).on('click', '.test-btn', this.testConnection.bind(this));
             $(document).on('click', '.save-settings-btn', this.saveSettings.bind(this));
+            $(document).on('click', '#save-site-role-btn', this.saveSiteRole.bind(this));
             
             // Mapping
             $(document).on('click', '.sync-all-btn', this.syncAllInventory.bind(this));
             $(document).on('click', '.product-item', this.selectProduct.bind(this));
+            $(document).on('click', '.create-mapping-btn', this.createMapping.bind(this));
+            $(document).on('click', '.remove-mapping-btn', this.removeMapping.bind(this));
             
             // Transfer
             $(document).on('click', '#select-all-transfer', this.toggleSelectAll.bind(this));
@@ -461,6 +464,126 @@
             });
             
             $('.logs-list').html(html);
+        },
+        
+        // === جدید: مدیریت نقش سایت ===
+        saveSiteRole: function(e) {
+            e.preventDefault();
+            const $btn = $(e.target);
+            const role = $('#current_site_role').val();
+            
+            if (!role) {
+                alert('لطفاً یک نقش سایت انتخاب کنید');
+                return;
+            }
+            
+            $btn.attr('disabled', true).text('درحال ذخیره...');
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_save_site_role',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    role: role
+                },
+                success: (response) => {
+                    if (response.success) {
+                        $('.site-role-status')
+                            .removeClass('error')
+                            .addClass('success')
+                            .text('✓ ' + response.data.message)
+                            .show();
+                        
+                        setTimeout(() => {
+                            location.reload();
+                        }, 1500);
+                    } else {
+                        $('.site-role-status')
+                            .removeClass('success')
+                            .addClass('error')
+                            .text('✗ ' + response.data)
+                            .show();
+                    }
+                },
+                error: () => {
+                    $('.site-role-status')
+                        .removeClass('success')
+                        .addClass('error')
+                        .text('✗ خطا در برقراری ارتباط')
+                        .show();
+                },
+                complete: () => {
+                    $btn.attr('disabled', false).text('💾 ذخیره نقش سایت');
+                }
+            });
+        },
+        
+        // === جدید: ایجاد مرتبط‌سازی ===
+        createMapping: function(e) {
+            e.preventDefault();
+            const site1ProductId = $('[data-selected-site1-id]').attr('data-selected-site1-id');
+            const site2ProductId = $('[data-selected-site2-id]').attr('data-selected-site2-id');
+            
+            if (!site1ProductId || !site2ProductId) {
+                alert('لطفاً یک محصول از هر سایت انتخاب کنید');
+                return;
+            }
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_create_mapping',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    site1_product_id: site1ProductId,
+                    site2_product_id: site2ProductId
+                },
+                success: (response) => {
+                    if (response.success) {
+                        alert('✓ ' + response.data.message);
+                        this.loadProducts('site1');
+                        this.loadProducts('site2');
+                    } else {
+                        alert('✗ ' + response.data);
+                    }
+                },
+                error: () => {
+                    alert('✗ خطا در ایجاد مرتبط‌سازی');
+                }
+            });
+        },
+        
+        // === جدید: حذف مرتبط‌سازی ===
+        removeMapping: function(e) {
+            e.preventDefault();
+            if (!confirm('آیا از حذف این مرتبط‌سازی مطمئن هستید؟')) {
+                return;
+            }
+            
+            const mappingId = $(e.target).attr('data-mapping-id');
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_remove_mapping',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    mapping_id: mappingId
+                },
+                success: (response) => {
+                    if (response.success) {
+                        alert('✓ ' + response.data.message);
+                        this.loadProducts('site1');
+                        this.loadProducts('site2');
+                    } else {
+                        alert('✗ ' + response.data);
+                    }
+                },
+                error: () => {
+                    alert('✗ خطا در حذف مرتبط‌سازی');
+                }
+            });
         }
     };
     

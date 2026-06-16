@@ -48,9 +48,52 @@ class Inventory_Sync_Settings {
         return get_option(self::OPTION_PREFIX . 'sync_interval', 300); // 5 minutes
     }
     
+    /**
+     * تعیین نقش سایت فعلی (site1 یا site2)
+     * سایت 1 می‌تواند مرتبط کننده باشد و محصولات را مرتبط کند
+     * سایت 2 فقط دنبال کننده است
+     */
+    public static function get_current_site_role() {
+        return get_option(self::OPTION_PREFIX . 'current_site_role', '');
+    }
+    
+    /**
+     * ذخیره نقش سایت فعلی
+     * 
+     * @param string $role - 'site1' یا 'site2'
+     */
+    public static function set_current_site_role($role) {
+        if (!in_array($role, ['site1', 'site2'], true)) {
+            return new WP_Error('invalid_role', __('نقش نامعتبر. فقط site1 یا site2 مجاز است.', 'inventory-sync'));
+        }
+        return update_option(self::OPTION_PREFIX . 'current_site_role', sanitize_text_field($role));
+    }
+    
+    /**
+     * بررسی اینکه آیا سایت فعلی، سایت 1 (مدیریت‌کننده) است
+     */
+    public static function is_primary_site() {
+        return self::get_current_site_role() === 'site1';
+    }
+    
+    /**
+     * بررسی اینکه آیا سایت فعلی، سایت 2 (دنبال‌کننده) است
+     */
+    public static function is_secondary_site() {
+        return self::get_current_site_role() === 'site2';
+    }
+    
     public static function save_settings($data) {
         if (empty($data) || !is_array($data)) {
             return false;
+        }
+        
+        // نقش سایت فعلی
+        if (!empty($data['current_site_role'])) {
+            $role_result = self::set_current_site_role($data['current_site_role']);
+            if (is_wp_error($role_result)) {
+                return $role_result;
+            }
         }
         
         update_option(self::OPTION_PREFIX . 'site1_name', sanitize_text_field($data['site1_name'] ?? ''));

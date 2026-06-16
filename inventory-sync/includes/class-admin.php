@@ -22,6 +22,12 @@ class Inventory_Sync_Admin {
         add_action('wp_ajax_inventory_sync_transfer_products', [$this, 'ajax_transfer_products']);
         add_action('wp_ajax_inventory_sync_get_logs', [$this, 'ajax_get_logs']);
         add_action('wp_ajax_inventory_sync_get_transferred_products', [$this, 'ajax_get_transferred_products']);
+        
+        // AJAX handlers جدید برای مرتبط‌سازی
+        add_action('wp_ajax_inventory_sync_save_site_role', [$this, 'ajax_save_site_role']);
+        add_action('wp_ajax_inventory_sync_get_mapping_products', [$this, 'ajax_get_mapping_products']);
+        add_action('wp_ajax_inventory_sync_create_mapping', [$this, 'ajax_create_mapping']);
+        add_action('wp_ajax_inventory_sync_remove_mapping', [$this, 'ajax_remove_mapping']);
     }
     
     public function add_menu() {
@@ -281,5 +287,147 @@ class Inventory_Sync_Admin {
         $products = Inventory_Sync_Database::get_transferred_products($limit, $offset);
         
         wp_send_json_success($products);
+    }
+    
+    /**
+     * AJAX: ذخیره نقش سایت (site1 یا site2)
+     */
+    public function ajax_save_site_role() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(__('عدم دسترسی.', 'inventory-sync'));
+        }
+        
+        try {
+            $role = sanitize_text_field($_POST['role'] ?? '');
+            
+            if (empty($role)) {
+                wp_send_json_error(__('نقش سایت انتخاب نشده است.', 'inventory-sync'));
+            }
+            
+            // ذخیره نقش سایت
+            $result = Inventory_Sync_Settings::set_current_site_role($role);
+            
+            if (is_wp_error($result)) {
+                wp_send_json_error($result->get_error_message());
+            }
+            
+            wp_send_json_success([
+                'message' => sprintf(
+                    __('نقش سایت با موفقیت به "%s" تغییر یافت.', 'inventory-sync'),
+                    $role === 'site1' ? 'سایت 1 (مدیریت‌کننده)' : 'سایت 2 (دنبال‌کننده)'
+                ),
+                'role' => $role
+            ]);
+            
+        } catch (Exception $e) {
+            error_log('[Inventory Sync] خطا در ذخیره نقش سایت: ' . $e->getMessage());
+            wp_send_json_error(__('خطای داخلی سرور.', 'inventory-sync'));
+        }
+    }
+    
+    /**
+     * AJAX: دریافت محصولات برای مرتبط‌سازی
+     */
+    public function ajax_get_mapping_products() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(__('عدم دسترسی.', 'inventory-sync'));
+        }
+        
+        try {
+            $site = sanitize_text_field($_POST['site'] ?? '');
+            $page = intval($_POST['page'] ?? 1);
+            $per_page = intval($_POST['per_page'] ?? 20);
+            
+            if (!in_array($site, ['site1', 'site2'], true)) {
+                wp_send_json_error(__('سایت نامعتبر.', 'inventory-sync'));
+            }
+            
+            $mapper = Inventory_Sync_Mapping_Manager::get_instance();
+            $products = $mapper->get_products_for_mapping($site, $per_page, $page);
+            
+            if (is_wp_error($products)) {
+                wp_send_json_error($products->get_error_message());
+            }
+            
+            wp_send_json_success([
+                'products' => $products,
+                'site' => $site,
+                'page' => $page,
+                'per_page' => $per_page
+            ]);
+            
+        } catch (Exception $e) {
+            error_log('[Inventory Sync] خطا در دریافت محصولات: ' . $e->getMessage());
+            wp_send_json_error(__('خطای داخلی سرور.', 'inventory-sync'));
+        }
+    }
+    
+    /**
+     * AJAX: ایجاد ارتباط بین دو محصول
+     */
+    public function ajax_create_mapping() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(__('عدم دسترسی.', 'inventory-sync'));
+        }
+        
+        try {
+            $site1_product_id = intval($_POST['site1_product_id'] ?? 0);
+            $site2_product_id = intval($_POST['site2_product_id'] ?? 0);
+            
+            if (!$site1_product_id || !$site2_product_id) {
+                wp_send_json_error(__('ID های محصول نامعتبر هستند.', 'inventory-sync'));
+            }
+            
+            $mapper = Inventory_Sync_Mapping_Manager::get_instance();
+            $result = $mapper->create_mapping($site1_product_id, $site2_product_id);
+            
+            if (is_wp_error($result)) {
+                wp_send_json_error($result->get_error_message());
+            }
+            
+            wp_send_json_success($result);
+            
+        } catch (Exception $e) {
+            error_log('[Inventory Sync] خطا در ایجاد mapping: ' . $e->getMessage());
+            wp_send_json_error(__('خطای داخلی سرور.', 'inventory-sync'));
+        }
+    }
+    
+    /**
+     * AJAX: حذف ارتباط بین دو محصول
+     */
+    public function ajax_remove_mapping() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(__('عدم دسترسی.', 'inventory-sync'));
+        }
+        
+        try {
+            $mapping_id = intval($_POST['mapping_id'] ?? 0);
+            
+            if (!$mapping_id) {
+                wp_send_json_error(__('شناسه ارتباط نامعتبر است.', 'inventory-sync'));
+            }
+            
+            $mapper = Inventory_Sync_Mapping_Manager::get_instance();
+            $result = $mapper->remove_mapping($mapping_id);
+            
+            if (is_wp_error($result)) {
+                wp_send_json_error($result->get_error_message());
+            }
+            
+            wp_send_json_success($result);
+            
+        } catch (Exception $e) {
+            error_log('[Inventory Sync] خطا در حذف mapping: ' . $e->getMessage());
+            wp_send_json_error(__('خطای داخلی سرور.', 'inventory-sync'));
+        }
     }
 }

@@ -37,6 +37,38 @@ if (!defined('ABSPATH')) exit;
         <!-- Settings Tab -->
         <div id="settings" class="tab-pane active">
             <div class="settings-container">
+                <!-- تعیین نقش سایت -->
+                <div class="site-role-section" style="background: #f9f9f9; padding: 20px; margin-bottom: 30px; border-radius: 5px; border-left: 4px solid #0073aa;">
+                    <h2><?php esc_html_e('تعیین نقش پلاگین', 'inventory-sync'); ?></h2>
+                    <p style="color: #666; margin-bottom: 15px;">
+                        <?php esc_html_e('این پلاگین برای کدام سایت است؟ سایت 1 نقش مدیریت‌کننده و سایت 2 نقش دنبال‌کننده دارد.', 'inventory-sync'); ?>
+                    </p>
+                    
+                    <div class="form-group">
+                        <label for="current_site_role" style="font-weight: bold;">
+                            <?php esc_html_e('انتخاب نقش سایت:', 'inventory-sync'); ?>
+                            <button type="button" class="help-btn" data-help-id="help-site-role">?</button>
+                        </label>
+                        <select id="current_site_role" class="form-control" style="max-width: 300px;">
+                            <option value=""><?php esc_html_e('-- هنوز تعیین نشده --', 'inventory-sync'); ?></option>
+                            <option value="site1" <?php selected(Inventory_Sync_Settings::get_current_site_role(), 'site1'); ?>>
+                                <?php esc_html_e('🟢 سایت 1 (مدیریت‌کننده - می‌تواند مرتبط کند)', 'inventory-sync'); ?>
+                            </option>
+                            <option value="site2" <?php selected(Inventory_Sync_Settings::get_current_site_role(), 'site2'); ?>>
+                                <?php esc_html_e('🔵 سایت 2 (دنبال‌کننده - فقط دریافت می‌کند)', 'inventory-sync'); ?>
+                            </option>
+                        </select>
+                        <small style="color: #666; display: block; margin-top: 10px;">
+                            <?php esc_html_e('فقط سایت 1 می‌تواند محصولات را مرتبط کند. سایت 2 بطور خودکار تغییرات موجودی را دریافت می‌کند.', 'inventory-sync'); ?>
+                        </small>
+                    </div>
+                    
+                    <button class="button button-primary" id="save-site-role-btn">
+                        <?php esc_html_e('💾 ذخیره نقش سایت', 'inventory-sync'); ?>
+                    </button>
+                    <span class="site-role-status" style="margin-left: 10px; display: none;"></span>
+                </div>
+                
                 <h2><?php esc_html_e('تنظیمات سایت‌ها', 'inventory-sync'); ?></h2>
                 
                 <div class="settings-grid">
@@ -187,12 +219,25 @@ if (!defined('ABSPATH')) exit;
                 <?php esc_html_e('محصولات سایت 1 و 2 را در کنار هم ببینید و آنها را مرتبط کنید', 'inventory-sync'); ?>
             </p>
             
+            <?php if (!Inventory_Sync_Settings::is_primary_site()): ?>
+                <div class="inventory-sync-notice notice notice-warning" style="margin: 20px 0;">
+                    <p>
+                        <strong><?php esc_html_e('توجه:', 'inventory-sync'); ?></strong>
+                        <?php esc_html_e('فقط سایت 1 می‌تواند مرتبط‌سازی انجام دهد. سایت فعلی به عنوان سایت 2 تعریف شده است.', 'inventory-sync'); ?>
+                    </p>
+                </div>
+            <?php endif; ?>
+            
             <div class="mapping-container">
                 <div class="mapping-column">
                     <h3><?php esc_html_e('سایت 1 - محصولات', 'inventory-sync'); ?></h3>
                     <div class="products-list site1-products">
                         <p><?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?></p>
                     </div>
+                </div>
+                
+                <div style="width: 50px; display: flex; align-items: center; justify-content: center;">
+                    <div style="font-size: 24px; text-align: center;">↔️</div>
                 </div>
                 
                 <div class="mapping-column">
@@ -203,11 +248,28 @@ if (!defined('ABSPATH')) exit;
                 </div>
             </div>
             
-            <div class="mapping-actions">
-                <button class="button button-primary sync-all-btn">
-                    <?php esc_html_e('⚡ هماهنگ‌سازی همه موجودی‌ها', 'inventory-sync'); ?>
-                </button>
-            </div>
+            <?php if (Inventory_Sync_Settings::is_primary_site()): ?>
+                <div class="mapping-actions" style="margin-top: 20px; padding: 20px; background: #f9f9f9; border-radius: 5px;">
+                    <p style="margin-top: 0;">
+                        <strong><?php esc_html_e('روند مرتبط‌سازی:', 'inventory-sync'); ?></strong><br/>
+                        <?php esc_html_e('1️⃣ یک محصول از سایت 1 کلیک کنید (سمت چپ)<br/>2️⃣ یک محصول از سایت 2 کلیک کنید (سمت راست)<br/>3️⃣ دکمه "ایجاد مرتبط‌سازی" را فشار دهید', 'inventory-sync'); ?>
+                    </p>
+                    
+                    <button class="button button-primary" id="create-mapping-btn">
+                        <?php esc_html_e('🔗 ایجاد مرتبط‌سازی', 'inventory-sync'); ?>
+                    </button>
+                    <button class="button button-secondary sync-all-btn">
+                        <?php esc_html_e('⚡ هماهنگ‌سازی همه موجودی‌ها', 'inventory-sync'); ?>
+                    </button>
+                </div>
+            <?php else: ?>
+                <div class="mapping-actions" style="margin-top: 20px; padding: 20px; background: #f0f0f0; border-radius: 5px;">
+                    <p><?php esc_html_e('نوع سایت: 🔵 سایت 2 (دنبال‌کننده) - تنها می‌توانید محصولات را مشاهده کنید.', 'inventory-sync'); ?></p>
+                    <button class="button button-secondary sync-all-btn">
+                        <?php esc_html_e('⚡ هماهنگ‌سازی همه موجودی‌ها', 'inventory-sync'); ?>
+                    </button>
+                </div>
+            <?php endif; ?>
         </div>
         
         <!-- Transfer Tab -->
