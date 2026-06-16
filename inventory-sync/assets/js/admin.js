@@ -476,7 +476,7 @@
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_get_all_products',
-                    nonce: inventorySyncData.nonce
+                    _ajax_nonce: inventorySyncData.nonce
                 },
                 success: (response) => {
                     if (response.success && response.data) {
