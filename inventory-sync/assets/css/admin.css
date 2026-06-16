@@ -479,40 +479,100 @@
 }
 
 .product-item {
-    padding: 10px;
-    margin-bottom: 8px;
+    padding: 14px;
+    margin-bottom: 12px;
     background: white;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
+    border: 2px solid var(--border-color);
+    border-radius: 6px;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all 0.25s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.product-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 4px;
+    background: transparent;
+    transition: background 0.25s ease;
 }
 
 .product-item:hover {
-    background: #f9f9f9;
+    background: #f9fafb;
     border-color: var(--primary-color);
+    box-shadow: 0 2px 8px rgba(34, 113, 177, 0.15);
+}
+
+.product-item:hover::before {
+    background: var(--primary-color);
 }
 
 .product-item.selected {
-    background: #e8f4f8;
-    border-color: var(--primary-color);
+    background: linear-gradient(135deg, #2271b1 0%, #1d5a96 100%);
+    color: white;
+    border-color: #1d5a96;
+    box-shadow: 0 4px 16px rgba(34, 113, 177, 0.3);
+}
+
+.product-item.selected::before {
+    background: white;
+}
+
+.product-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 10px;
+    gap: 12px;
 }
 
 .product-name {
-    font-weight: bold;
+    font-weight: 600;
     color: var(--text-color);
-    margin-bottom: 4px;
+    font-size: 14px;
+    flex: 1;
+    word-wrap: break-word;
+    word-break: break-word;
+    line-height: 1.4;
+}
+
+.product-item.selected .product-name {
+    color: white;
+}
+
+.product-select {
+    margin-top: 2px;
+    cursor: pointer;
+    accent-color: var(--primary-color);
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
 }
 
 .product-sku {
     font-size: 12px;
     color: #666;
+    margin-bottom: 6px;
+    display: block;
+}
+
+.product-item.selected .product-sku {
+    color: rgba(255, 255, 255, 0.9);
 }
 
 .product-stock {
-    font-size: 12px;
+    font-size: 13px;
     color: var(--success-color);
-    margin-top: 4px;
+    font-weight: 500;
+    display: block;
+}
+
+.product-item.selected .product-stock {
+    color: #a8e6b8;
 }
 
 /* Transfer Container */

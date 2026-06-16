@@ -177,6 +177,7 @@ class Inventory_Sync_Manager {
     public function sync_inventory($mapping_id) {
         global $wpdb;
         
+        // دریافت mapping
         $mapping = $wpdb->get_row(
             $wpdb->prepare(
                 "SELECT * FROM {$wpdb->prefix}inventory_sync_mapping WHERE id = %d",
@@ -185,8 +186,172 @@ class Inventory_Sync_Manager {
         );
         
         if (!$mapping) {
-            return new WP_Error('not_found', 'نقشه‌برداری پیدا نشد');
+            return new WP_Error('mapping_not_found', 'نقشه‌برداری پیدا نشد');
         }
+        
+        if (!$mapping->sync_enabled) {
+            return new WP_Error('sync_disabled', 'هماهنگ‌سازی غیرفعال است');
+        }
+        
+        // دریافت محصولات
+        $product1 = $this->site1_api->get_product($mapping->site1_product_id);
+        $product2 = $this->site2_api->get_product($mapping->site2_product_id);
+        
+        if (is_wp_error($product1) || is_wp_error($product2)) {
+            $error_msg = '';
+            if (is_wp_error($product1)) $error_msg .= 'سایت 1: ' . $product1->get_error_message();
+            if (is_wp_error($product2)) $error_msg .= 'سایت 2: ' . $product2->get_error_message();
+            
+            Inventory_Sync_Database::insert_log(
+                $mapping->site1_product_id,
+                'محصول نامشخص',
+                'product_fetch_failed',
+                'سیستم',
+                'سیستم',
+                0,
+                $mapping->site2_product_id,
+                'failed',
+                $error_msg
+            );
+            
+            return new WP_Error('product_not_found', 'یکی از محصولات پیدا نشد: ' . $error_msg);
+        }
+        
+        // دریافت نام‌های محصول
+        $product1_name = $product1['name'] ?? 'محصول سایت 1';
+        $product2_name = $product2['name'] ?? 'محصول سایت 2';
+        
+        // هماهنگ‌سازی موجودی
+        $site1_stock = intval($product1['stock_quantity'] ?? 0);
+        $site2_stock = intval($product2['stock_quantity'] ?? 0);
+        
+        if ($site1_stock === $site2_stock) {
+            // موجودی‌ها برابرند - هنوز log کن
+            Inventory_Sync_Database::insert_log(
+                $mapping->site1_product_id,
+                $product1_name,
+                'inventory_already_synced',
+                'سایت 1',
+                'سایت 2',
+                $site1_stock,
+                $mapping->site2_product_id,
+                'info',
+                "موجودی‌ها برابرند: {$site1_stock} واحد"
+            );
+            return ['status' => 'equal'];
+        }
+        
+        $sync_direction = Inventory_Sync_Settings::get_sync_direction();
+        
+        if ($sync_direction === 'site1_to_site2') {
+            // نوشتن موجودی سایت 1 به سایت 2
+            Inventory_Sync_Database::insert_log(
+                $mapping->site1_product_id,
+                $product1_name,
+                'inventory_sync_started',
+                'سایت 1',
+                'سایت 2',
+                $site1_stock,
+                $mapping->site2_product_id,
+                'info',
+                "شروع انتقال موجودی: سایت 1 ({$product1_name}) = {$site1_stock} واحد → سایت 2 ({$product2_name})"
+            );
+            
+            $result = $this->site2_api->update_product_stock(
+                $mapping->site2_product_id,
+                $site1_stock
+            );
+            
+            if (is_wp_error($result)) {
+                Inventory_Sync_Database::insert_log(
+                    $mapping->site1_product_id,
+                    $product1_name,
+                    'inventory_sync_failed',
+                    'سایت 1',
+                    'سایت 2',
+                    $site1_stock,
+                    $mapping->site2_product_id,
+                    'failed',
+                    "ناموفق: " . $result->get_error_message()
+                );
+                return $result;
+            }
+            
+            // ثبت log موفق
+            Inventory_Sync_Database::insert_log(
+                $mapping->site1_product_id,
+                $product1_name,
+                'inventory_synced',
+                'سایت 1',
+                'سایت 2',
+                $site1_stock,
+                $mapping->site2_product_id,
+                'success',
+                "موجودی سایت 2 ({$product2_name}) از {$site2_stock} به {$site1_stock} تغییر کرد"
+            );
+            
+        } else {
+            // نوشتن موجودی سایت 2 به سایت 1
+            Inventory_Sync_Database::insert_log(
+                $mapping->site2_product_id,
+                $product2_name,
+                'inventory_sync_started',
+                'سایت 2',
+                'سایت 1',
+                $site2_stock,
+                $mapping->site1_product_id,
+                'info',
+                "شروع انتقال موجودی: سایت 2 ({$product2_name}) = {$site2_stock} واحد → سایت 1 ({$product1_name})"
+            );
+            
+            $result = $this->site1_api->update_product_stock(
+                $mapping->site1_product_id,
+                $site2_stock
+            );
+            
+            if (is_wp_error($result)) {
+                Inventory_Sync_Database::insert_log(
+                    $mapping->site2_product_id,
+                    $product2_name,
+                    'inventory_sync_failed',
+                    'سایت 2',
+                    'سایت 1',
+                    $site2_stock,
+                    $mapping->site1_product_id,
+                    'failed',
+                    "ناموفق: " . $result->get_error_message()
+                );
+                return $result;
+            }
+            
+            // ثبت log موفق
+            Inventory_Sync_Database::insert_log(
+                $mapping->site2_product_id,
+                $product2_name,
+                'inventory_synced',
+                'سایت 2',
+                'سایت 1',
+                $site2_stock,
+                $mapping->site1_product_id,
+                'success',
+                "موجودی سایت 1 ({$product1_name}) از {$site1_stock} به {$site2_stock} تغییر کرد"
+            );
+        }
+        
+        // بروزرسانی sync_status در mapping
+        $wpdb->update(
+            $wpdb->prefix . 'inventory_sync_mapping',
+            [
+                'sync_status' => 'synced',
+                'last_sync' => current_time('mysql')
+            ],
+            ['id' => $mapping_id],
+            ['%s', '%s'],
+            ['id' => '%d']
+        );
+        
+        return ['status' => 'synced'];
+    }
         
         $direction = Inventory_Sync_Settings::get_sync_direction();
         
@@ -427,7 +592,7 @@ class Inventory_Sync_Manager {
     }
     
     /**
-     * انتقال محصول شامل دسته‌بندی‌ها، ویژگی‌ها و متغیّرها
+     * انتقال محصول شامل دسته‌بندی‌ها، ویژگی‌ه�� و متغیّرها
      * 
      * ⭐ بسیار مهم: این متد حالا Idempotent است
      * یعنی اگر محصول قبلاً منتقل شده بود و پاک‌شد و دوباره منتقل شود، کار می‌کند

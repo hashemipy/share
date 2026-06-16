@@ -167,11 +167,13 @@
                     page: 1
                 },
                 success: (response) => {
-                    if (response.success) {
+                    if (response.success && response.data) {
                         this.renderProducts($container, response.data, site);
+                    } else {
+                        $container.html('<p class="alert alert-error">خطا: هیچ داده دریافت نشد</p>');
                     }
                 },
-                error: () => {
+                error: (xhr, status, error) => {
                     $container.html('<p class="alert alert-error">' + inventorySyncData.i18n.error + '</p>');
                 }
             });
@@ -184,17 +186,38 @@
             }
             
             let html = '';
-            products.forEach(product => {
+            products.forEach((product, index) => {
+                // نام محصول را صحیح اخذ کن
+                const productName = product.name || product.post_title || 'بدون نام';
+                const productSku = product.sku || 'N/A';
+                const productStock = product.stock_quantity !== undefined ? product.stock_quantity : 0;
+                const productId = product.id;
+                
                 html += `
-                    <div class="product-item" data-site="${site}" data-id="${product.id}">
-                        <div class="product-name">${product.name}</div>
-                        <div class="product-sku">SKU: ${product.sku || 'N/A'}</div>
-                        <div class="product-stock">📦 موجودی: ${product.stock_quantity || 0}</div>
+                    <div class="product-item" data-site="${site}" data-id="${productId}">
+                        <div class="product-header">
+                            <div class="product-name">${this.escapeHtml(productName)}</div>
+                            <input type="checkbox" class="product-select" value="${productId}">
+                        </div>
+                        <div class="product-sku">SKU: ${this.escapeHtml(productSku)}</div>
+                        <div class="product-stock">📦 موجودی: ${productStock}</div>
                     </div>
                 `;
             });
             
             $container.html(html);
+        },
+        
+        escapeHtml: function(text) {
+            if (!text) return '';
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, m => map[m]);
         },
         
         selectProduct: function(e) {
@@ -330,7 +353,7 @@
         
         renderExistingMappings: function(mappings) {
             if (!mappings || mappings.length === 0) {
-                $('.mappings-list').html('<p>' + inventorySyncData.i18n.selectProducts + '</p>');
+                $('.mappings-list').html('<p>هیچ مرتبط‌سازی‌ای وجود ندارد</p>');
                 return;
             }
             
@@ -339,13 +362,17 @@
                 const syncStatus = mapping.sync_status === 'synced' ? '✓' : '⏳';
                 const lastSync = mapping.last_sync ? new Date(mapping.last_sync).toLocaleString('fa-IR') : '-';
                 
+                // نام‌های محصول را بهتر handle کن
+                const site1Name = this.escapeHtml(mapping.site1_product_name || 'محصول سایت 1');
+                const site2Name = this.escapeHtml(mapping.site2_product_name || 'محصول سایت 2');
+                
                 html += `
                     <div class="mapping-item" data-mapping-id="${mapping.id}">
                         <div class="mapping-info">
                             <div class="mapping-products">
-                                <strong>${mapping.site1_product_name}</strong>
+                                <strong>${site1Name}</strong>
                                 <span class="mapping-arrow">←→</span>
-                                <strong>${mapping.site2_product_name}</strong>
+                                <strong>${site2Name}</strong>
                             </div>
                             <div class="mapping-meta">
                                 <span>${syncStatus} آخرین هماهنگ: ${lastSync}</span>
