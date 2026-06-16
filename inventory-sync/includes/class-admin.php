@@ -69,11 +69,11 @@ class Inventory_Sync_Admin {
             'nonce' => wp_create_nonce('inventory_sync_nonce'),
             'ajaxurl' => admin_url('admin-ajax.php'),
             'i18n' => [
-                'saving' => __('ذخیره می‌شود...', 'inventory-sync'),
+                'saving' => __('در حال ذخیره...', 'inventory-sync'),
                 'saved' => __('ذخیره شد!', 'inventory-sync'),
                 'error' => __('خطا رخ داد!', 'inventory-sync'),
-                'loading' => __('بارگذاری...', 'inventory-sync'),
-                'syncing' => __('هماهنگ‌سازی...', 'inventory-sync'),
+                'loading' => __('در حال بارگذاری...', 'inventory-sync'),
+                'syncing' => __('در حال هماهنگ‌سازی...', 'inventory-sync'),
                 'success' => __('موفق!', 'inventory-sync'),
                 'selectProducts' => __('محصولات را انتخاب کنید', 'inventory-sync'),
                 'testConnection' => __('تست اتصال', 'inventory-sync'),
@@ -119,7 +119,7 @@ class Inventory_Sync_Admin {
         if ($result) {
             wp_send_json_success('اتصال برقرار است!');
         } else {
-            wp_send_json_error('اتصال ناموفق بود');
+            wp_send_json_error('اتصال ناموفق');
         }
     }
     
@@ -188,7 +188,7 @@ class Inventory_Sync_Admin {
         $site2_sku = sanitize_text_field($_POST['site2_sku'] ?? '');
         
         if (!$site1_id || !$site2_id) {
-            wp_send_json_error('شناسه‌های محصول مورد نیاز است');
+            wp_send_json_error('شناسه‌های محصول لازم‌اند');
         }
         
         $result = $wpdb->insert(
@@ -219,7 +219,7 @@ class Inventory_Sync_Admin {
         $mapping_id = intval($_POST['mapping_id'] ?? 0);
         
         if (!$mapping_id) {
-            wp_send_json_error('شناسه نقشه‌برداری مورد نیاز است');
+            wp_send_json_error('شناسه نقشه‌برداری لازم‌است');
         }
         
         $sync_manager = Inventory_Sync_Manager::get_instance();
@@ -242,7 +242,7 @@ class Inventory_Sync_Admin {
         $product_ids = array_map('intval', $_POST['product_ids'] ?? []);
         
         if (empty($product_ids)) {
-            wp_send_json_error('محصولی انتخاب نشده است');
+            wp_send_json_error('محصولی انتخاب نشده');
         }
         
         $sync_manager = Inventory_Sync_Manager::get_instance();
@@ -293,13 +293,13 @@ class Inventory_Sync_Admin {
     }
     
     /**
-     * تمام محصولات (دونوں سائٹ) - Caching کے ساتھ
+     * تمام محصولات (دو سایت) - با کش‌کاری
      */
     public function ajax_get_all_products() {
         check_ajax_referer('inventory_sync_nonce');
         
         if (!current_user_can('manage_woocommerce')) {
-            wp_send_json_error('رسائی نہیں');
+            wp_send_json_error('دسترسی رد شد');
         }
         
         $is_site_2 = Inventory_Sync_Settings::is_site_2();
@@ -312,7 +312,7 @@ class Inventory_Sync_Admin {
             wp_send_json_success($cached);
         }
         
-        // موجودہ سائٹ کے محصولات
+        // محصولات سایت فعلی
         $current_site_products = wc_get_products(['limit' => 500, 'status' => 'publish']);
         $current_site_data = array_map(function($p) {
             return [
@@ -322,7 +322,7 @@ class Inventory_Sync_Admin {
             ];
         }, $current_site_products ?: []);
         
-        // دوسری سائٹ کے محصولات (API سے)
+        // محصولات سایت دیگر (از API)
         $other_site_data = [];
         try {
             $api_url = $is_site_2 ? Inventory_Sync_Settings::get_site1_url() : Inventory_Sync_Settings::get_site2_url();
@@ -337,17 +337,17 @@ class Inventory_Sync_Admin {
                     $other_site_data = array_map(function($p) {
                         return [
                             'id' => isset($p['id']) ? intval($p['id']) : null,
-                            'name' => isset($p['name']) ? sanitize_text_field($p['name']) : 'نامشخص',
+                            'name' => isset($p['name']) ? sanitize_text_field($p['name']) : 'نامشناخته',
                             'sku' => isset($p['sku']) ? sanitize_text_field($p['sku']) : ''
                         ];
                     }, $response);
                 }
             }
         } catch (Exception $e) {
-            // خالی رہے گا
+            // خالی بماند
         }
         
-        // صحیح ترتیب میں واپس کریں
+        // ترتیب صحیح را برگردان
         $data = $is_site_2 ? [
             'site1' => $other_site_data,
             'site2' => $current_site_data
@@ -356,20 +356,20 @@ class Inventory_Sync_Admin {
             'site2' => $other_site_data
         ];
         
-        // 5 منٹ کے لیے cache کریں
+        // 5 دقیقه کش کن
         wp_cache_set($cache_key, $data, '', 5 * MINUTE_IN_SECONDS);
         
         wp_send_json_success($data);
     }
     
     /**
-     * تمام mappings - محدود queries
+     * تمام نقشه‌برداری‌ها - تعداد query محدود
      */
     public function ajax_get_mappings() {
         check_ajax_referer('inventory_sync_nonce');
         
         if (!current_user_can('manage_woocommerce')) {
-            wp_send_json_error('رسائی نہیں');
+            wp_send_json_error('دسترسی رد شد');
         }
         
         $is_site_2 = Inventory_Sync_Settings::is_site_2();
@@ -383,7 +383,7 @@ class Inventory_Sync_Admin {
             wp_send_json_success([]);
         }
         
-        // ہر mapping میں صرف ضروری معلومات شامل کریں
+        // هر نقشه‌برداری میں فقط لازمی اطلاعات شامل کنید
         $product_ids = [];
         foreach ($mappings as $m) {
             $product_ids[] = $m->site1_product_id;
@@ -392,7 +392,7 @@ class Inventory_Sync_Admin {
             }
         }
         
-        // ایک ہی query میں تمام محصولات لیں
+        // یک query میں تمام محصولات بگیرید
         $products = [];
         if (!empty($product_ids)) {
             $product_ids = array_unique($product_ids);
@@ -408,28 +408,28 @@ class Inventory_Sync_Admin {
             }
         }
         
-        // ہر mapping میں ڈیٹا شامل کریں
+        // هر نقشه‌برداری میں ڈیٹا شامل کنید
         foreach ($mappings as &$m) {
             if ($is_site_2) {
-                // Site 2 میں ہیں
-                // Site 1 API سے (صرف جب ضروری ہو)
-                $m->site1_name = $products[$m->site1_product_id]['name'] ?? 'نامشخص';
+                // سایت 2 میں هستیم
+                // سایت 1 از API (فقط اگر لازم باشد)
+                $m->site1_name = $products[$m->site1_product_id]['name'] ?? 'نامشناخته';
                 $m->site1_sku = $products[$m->site1_product_id]['sku'] ?? $m->site1_sku;
                 $m->site1_stock = 0;
                 
-                // Site 2 WooCommerce سے
-                $m->site2_name = $products[$m->site2_product_id]['name'] ?? 'حذف شدہ';
+                // سایت 2 از WooCommerce
+                $m->site2_name = $products[$m->site2_product_id]['name'] ?? 'حذف‌شده';
                 $m->site2_sku = $products[$m->site2_product_id]['sku'] ?? $m->site2_sku;
                 $m->site2_stock = $products[$m->site2_product_id]['stock'] ?? 0;
             } else {
-                // Site 1 میں ہیں
-                // Site 1 WooCommerce سے
-                $m->site1_name = $products[$m->site1_product_id]['name'] ?? 'حذف شدہ';
+                // سایت 1 میں هستیم
+                // سایت 1 از WooCommerce
+                $m->site1_name = $products[$m->site1_product_id]['name'] ?? 'حذف‌شده';
                 $m->site1_sku = $products[$m->site1_product_id]['sku'] ?? $m->site1_sku;
                 $m->site1_stock = $products[$m->site1_product_id]['stock'] ?? 0;
                 
-                // Site 2: API بھی درکار ہے لیکن بعد میں fetch کریں اگر ضروری ہو
-                $m->site2_name = 'نامشخص';
+                // سایت 2: API نیز لازم است اما بعداً بگیرید اگر لازم باشد
+                $m->site2_name = 'نامشناخته';
                 $m->site2_stock = 0;
             }
         }
@@ -438,13 +438,13 @@ class Inventory_Sync_Admin {
     }
     
     /**
-     * نیا mapping اضافہ کریں
+     * نقشه‌برداری جدید شامل کنید
      */
     public function ajax_add_mapping() {
         check_ajax_referer('inventory_sync_nonce');
         
         if (!current_user_can('manage_woocommerce')) {
-            wp_send_json_error('رسائی نہیں');
+            wp_send_json_error('دسترسی رد شد');
         }
         
         global $wpdb;
@@ -452,7 +452,7 @@ class Inventory_Sync_Admin {
         $site2_id = intval($_POST['site2_product_id'] ?? 0);
         
         if (!$site1_id || !$site2_id) {
-            wp_send_json_error('محصول شناخت غلط ہے');
+            wp_send_json_error('شناسه محصول نامعتبر است');
         }
         
         $is_site_2 = Inventory_Sync_Settings::is_site_2();
@@ -460,15 +460,15 @@ class Inventory_Sync_Admin {
         $site2_sku = '';
         
         if (!$is_site_2) {
-            // Site 1 میں ہیں - یہ صحیح ہے
-            // Site 1 WooCommerce سے
+            // سایت 1 میں هستیم - این درست است
+            // سایت 1 از WooCommerce
             $p1 = wc_get_product($site1_id);
             if (!$p1) {
-                wp_send_json_error('Site 1 میں محصول موجود نہیں');
+                wp_send_json_error('سایت 1 میں محصول وجود ندارد');
             }
             $site1_sku = $p1->get_sku() ?? '';
             
-            // Site 2 API سے جلدی چیک کریں
+            // سایت 2 از API - سریع‌تر بررسی کنید
             try {
                 $api = new Inventory_Sync_API(
                     Inventory_Sync_Settings::get_site2_url(),
@@ -480,10 +480,10 @@ class Inventory_Sync_Admin {
                 if (is_array($response) && !isset($response['code'])) {
                     $site2_sku = isset($response['sku']) ? sanitize_text_field($response['sku']) : '';
                 } else {
-                    wp_send_json_error('Site 2 میں محصول موجود نہیں');
+                    wp_send_json_error('سایت 2 میں محصول وجود ندارد');
                 }
             } catch (Exception $e) {
-                wp_send_json_error('Site 2 سے رابطہ نہیں ہو سکا');
+                wp_send_json_error('ارتباط با سایت 2 برقرار نشد');
             }
         }
         
@@ -501,40 +501,40 @@ class Inventory_Sync_Admin {
         );
         
         if ($result) {
-            // Cache صاف کریں
+            // کش پاک کنید
             wp_cache_delete('inventory_sync_products_1');
             wp_cache_delete('inventory_sync_products_2');
             
-            wp_send_json_success('Mapping اضافہ ہو گیا');
+            wp_send_json_success('نقشه‌برداری شامل شد');
         } else {
-            wp_send_json_error('ڈیٹا بیس میں خرابی');
+            wp_send_json_error('خطا در پایگاه داده');
         }
     }
     
     /**
-     * تمام mappings کو sync کریں
+     * تمام نقشه‌برداری‌ها را همزمان کنید
      */
     public function ajax_sync_all_mappings() {
         check_ajax_referer('inventory_sync_nonce');
         
         if (!current_user_can('manage_woocommerce')) {
-            wp_send_json_error('رسائی نہیں');
+            wp_send_json_error('دسترسی رد شد');
         }
         
         $manager = Inventory_Sync_Manager::get_instance();
         $manager->sync_all_mappings();
         
-        wp_send_json_success('تمام sync ہو گئے');
+        wp_send_json_success('تمام نقشه‌برداری‌ها همزمان شدند');
     }
     
     /**
-     * ایک mapping کو sync کریں - تیز رفتار
+     * یک نقشه‌برداری را همزمان کنید - سریع‌تر
      */
     public function ajax_sync_mapping() {
         check_ajax_referer('inventory_sync_nonce');
         
         if (!current_user_can('manage_woocommerce')) {
-            wp_send_json_error('رسائی نہیں');
+            wp_send_json_error('دسترسی رد شد');
         }
         
         set_time_limit(30);
@@ -542,7 +542,7 @@ class Inventory_Sync_Admin {
         $mapping_id = intval($_POST['mapping_id'] ?? 0);
         
         if (!$mapping_id) {
-            wp_send_json_error('Mapping ID ضروری ہے');
+            wp_send_json_error('شناسه نقشه‌برداری ضروری است');
         }
         
         try {
@@ -553,9 +553,9 @@ class Inventory_Sync_Admin {
                 wp_send_json_error($result->get_error_message());
             }
             
-            wp_send_json_success('موجودی ہماہنگ ہو گئی');
+            wp_send_json_success('موجودی همزمان شد');
         } catch (Exception $e) {
-            wp_send_json_error('Sync میں خرابی: ' . $e->getMessage());
+            wp_send_json_error('خطا در همزمانی: ' . $e->getMessage());
         }
     }
     

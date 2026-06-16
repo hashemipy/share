@@ -39,12 +39,12 @@ if (!defined('ABSPATH')) exit;
             <div class="settings-container">
                 <h2><?php esc_html_e('تنظیمات سایت‌ها', 'inventory-sync'); ?></h2>
                 
-                <!-- Current Site Info -->
+                <!-- اطلاعات سایت فعلی -->
                 <div style="background: #e8f4f8; border: 1px solid #4caf50; border-radius: 5px; padding: 15px; margin-bottom: 20px;">
-                    <strong style="color: #2e7d32;">موجودہ سائٹ:</strong>
+                    <strong style="color: #2e7d32;">سایت فعلی:</strong>
                     <div style="margin-top: 10px; font-size: 14px;">
                         <p>
-                            یہ سائٹ ہے: 
+                            این سایت است: 
                             <strong>
                                 <?php 
                                     $current_site = Inventory_Sync_Settings::get_current_site_type();
@@ -58,15 +58,15 @@ if (!defined('ABSPATH')) exit;
                         
                         <?php if ($current_site === '2'): ?>
                             <div style="margin-top: 10px; padding: 10px; background: #fff9c4; border-radius: 3px; border-left: 3px solid #ff9800;">
-                                <strong>⚠️ شما سائٹ 2 میں ہیں</strong>
+                                <strong>⚠️ شما در سایت 2 هستید</strong>
                                 <p style="margin: 5px 0 0 0; font-size: 12px;">
-                                    محصولات کی ترتیب محدود ہے۔ محصولات کی ترتیب صرف سائٹ 1 میں کی جا سکتی ہے۔
+                                    تنظیم محصولات محدود است. تنظیم محصولات فقط در سایت 1 امکان‌پذیر است.
                                 </p>
                                 <label style="display: flex; align-items: center; margin-top: 10px; font-size: 12px;">
                                     <input type="checkbox" id="sync_to_site1" class="form-control" 
                                            <?php checked(Inventory_Sync_Settings::should_sync_to_site1()); ?>
                                            style="width: auto; margin-right: 8px;">
-                                    موجودی کی تبدیلیوں کو سائٹ 1 میں منتقل کریں
+                                    تغییرات موجودی را به سایت 1 ارسال کنید
                                 </label>
                             </div>
                         <?php endif; ?>
