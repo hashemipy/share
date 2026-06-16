@@ -476,7 +476,7 @@
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_get_all_products',
-                    nonce: inventorySyncData.nonce
+                    _ajax_nonce: inventorySyncData.nonce
                 },
                 success: (response) => {
                     if (response.success && response.data) {
@@ -485,7 +485,12 @@
                         
                         this.populateSelect('#site1-product-select', site1);
                         this.populateSelect('#site2-product-select', site2);
+                    } else {
+                        console.error('[v0] Failed to load products:', response.data);
                     }
+                },
+                error: (xhr, status, error) => {
+                    console.error('[v0] AJAX error loading products:', error);
                 }
             });
         },
@@ -516,19 +521,32 @@
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_get_mappings',
-                    nonce: inventorySyncData.nonce
+                    _ajax_nonce: inventorySyncData.nonce
                 },
                 success: (response) => {
                     if (response.success) {
                         this.renderMappings(response.data);
+                    } else {
+                        console.error('[v0] Failed to load mappings:', response.data);
+                        this.renderMappings([]);
                     }
+                },
+                error: (xhr, status, error) => {
+                    console.error('[v0] AJAX error loading mappings:', error);
+                    this.renderMappings([]);
                 }
             });
         },
         
         renderMappings: function(mappings) {
             if (!mappings || mappings.length === 0) {
-                $('.mappings-list').html('<tr><td colspan="7" style="text-align: center; padding: 20px;">کوئی mapping موجود نہیں</td></tr>');
+                $('.mappings-list').html(`
+                    <tr>
+                        <td colspan="7" style="text-align: center; padding: 20px; color: #666;">
+                            📭 هیچ mapping موجود نیست. از بالا یک mapping جدید اضافه کنید.
+                        </td>
+                    </tr>
+                `);
                 return;
             }
             

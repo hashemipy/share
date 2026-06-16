@@ -302,26 +302,49 @@ class Inventory_Sync_Admin {
             wp_send_json_error('رسائی نہیں');
         }
         
+        // Site 1 محصولات (لوکل)
         $site1_products = wc_get_products(['limit' => 500, 'status' => 'publish']);
-        $site2_products = [];
+        $site1_data = array_map(function($p) {
+            return [
+                'id' => $p->get_id(),
+                'name' => $p->get_name(),
+                'sku' => $p->get_sku()
+            ];
+        }, $site1_products);
         
-        // اگر remote API ہے تو سائٹ 2 سے بھی حاصل کریں
-        try {
-            $api = new Inventory_Sync_API(
-                Inventory_Sync_Settings::get_site2_url(),
-                Inventory_Sync_Settings::get_site2_key(),
-                Inventory_Sync_Settings::get_site2_secret()
-            );
-            $site2_products = $api->get_products(500) ?: [];
-        } catch (Exception $e) {
-            // API میں مسئلہ - خالی رہے گا
+        $site2_data = [];
+        
+        // سائٹ 2 محصولات (remote API)
+        $site2_url = Inventory_Sync_Settings::get_site2_url();
+        $site2_key = Inventory_Sync_Settings::get_site2_key();
+        $site2_secret = Inventory_Sync_Settings::get_site2_secret();
+        
+        if (!empty($site2_url) && !empty($site2_key) && !empty($site2_secret)) {
+            try {
+                $api = new Inventory_Sync_API($site2_url, $site2_key, $site2_secret);
+                $products = $api->get_products(500);
+                
+                if (is_wp_error($products)) {
+                    error_log('[Inventory Sync] Site2 API Error: ' . $products->get_error_message());
+                    $site2_data = [];
+                } elseif (is_array($products)) {
+                    $site2_data = array_map(function($p) {
+                        return [
+                            'id' => isset($p['id']) ? $p['id'] : 0,
+                            'name' => isset($p['name']) ? $p['name'] : '',
+                            'sku' => isset($p['sku']) ? $p['sku'] : ''
+                        ];
+                    }, $products);
+                }
+            } catch (Exception $e) {
+                error_log('[Inventory Sync] Exception: ' . $e->getMessage());
+                $site2_data = [];
+            }
         }
         
         $data = [
-            'site1' => array_map(function($p) {
-                return ['id' => $p->get_id(), 'name' => $p->get_name(), 'sku' => $p->get_sku()];
-            }, $site1_products),
-            'site2' => $site2_products
+            'site1' => $site1_data,
+            'site2' => $site2_data
         ];
         
         wp_send_json_success($data);
@@ -342,13 +365,22 @@ class Inventory_Sync_Admin {
             "SELECT * FROM {$wpdb->prefix}inventory_sync_mapping ORDER BY created_at DESC LIMIT 100"
         );
         
+        if (is_null($mappings)) {
+            // ٹیبل شاید موجود نہیں ہے
+            wp_send_json_success([]);
+            return;
+        }
+        
         foreach ($mappings as $m) {
             $p1 = wc_get_product($m->site1_product_id);
             $p2 = wc_get_product($m->site2_product_id);
-            $m->site1_name = $p1 ? $p1->get_name() : 'حذف شدہ';
-            $m->site2_name = $p2 ? $p2->get_name() : 'حذف شدہ';
-            $m->site1_stock = $p1 ? $p1->get_stock_quantity() : 0;
-            $m->site2_stock = $p2 ? $p2->get_stock_quantity() : 0;
+            
+            $m->site1_name = $p1 ? $p1->get_name() : 'حذف شدہ محصول (ID: ' . $m->site1_product_id . ')';
+            $m->site2_name = $p2 ? $p2->get_name() : 'حذف شدہ محصول (ID: ' . $m->site2_product_id . ')';
+            $m->site1_stock = $p1 ? intval($p1->get_stock_quantity()) : 0;
+            $m->site2_stock = $p2 ? intval($p2->get_stock_quantity()) : 0;
+            $m->site1_sku = $p1 ? $p1->get_sku() : ($m->site1_sku ?? 'N/A');
+            $m->site2_sku = $p2 ? $p2->get_sku() : ($m->site2_sku ?? 'N/A');
         }
         
         wp_send_json_success($mappings);
