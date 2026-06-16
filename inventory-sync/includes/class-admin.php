@@ -302,6 +302,114 @@ class Inventory_Sync_Admin {
             wp_send_json_error('رسائی نہیں');
         }
         
+        error_log('[v0] شروع: تمام محصولات حاصل کریں');
+        
+        // بررسی تنظیمات
+        $site1_url = Inventory_Sync_Settings::get_site1_url();
+        $site2_url = Inventory_Sync_Settings::get_site2_url();
+        $site2_key = Inventory_Sync_Settings::get_site2_key();
+        $site2_secret = Inventory_Sync_Settings::get_site2_secret();
+        
+        if (!$site2_url || !$site2_key || !$site2_secret) {
+            error_log('[v0] خطا: سائٹ 2 کی تنظیمات ناقص ہیں');
+            wp_send_json_error('تنظیمات سائٹ 2 کامل نیست۔ براہ کرم تب تنظیمات میں جائیں اور تمام فیلڈز کو بھریں۔');
+        }
+        
+        // سائٹ 1 محصولات - WooCommerce سے براہ راست
+        error_log('[v0] سائٹ 1 سے محصولات حاصل کر رہے ہیں...');
+        $site1_products = wc_get_products([
+            'limit' => 500, 
+            'status' => 'publish',
+            'orderby' => 'date',
+            'order' => 'DESC'
+        ]);
+        
+        error_log('[v0] سائٹ 1 سے ' . count($site1_products) . ' محصول ملے');
+        
+        $site1_data = array_map(function($p) {
+            return [
+                'id' => (int)$p->get_id(), 
+                'name' => sanitize_text_field($p->get_name()), 
+                'sku' => !empty($p->get_sku()) ? sanitize_text_field($p->get_sku()) : 'بغیر SKU'
+            ];
+        }, $site1_products);
+        
+        $site2_data = [];
+        
+        // سائٹ 2 سے محصولات حاصل کریں - Remote API کے ذریعے
+        error_log('[v0] سائٹ 2 سے محصولات حاصل کر رہے ہیں: ' . $site2_url);
+        
+        try {
+            $api = new Inventory_Sync_API(
+                $site2_url,
+                $site2_key,
+                $site2_secret
+            );
+            
+            // صفحات کے ذریعے لوپ کریں تاکہ تمام محصولات حاصل کریں
+            $page = 1;
+            $all_products = [];
+            $max_pages = 5; // 500 محصول تک
+            
+            while ($page <= $max_pages) {
+                error_log('[v0] سائٹ 2 سے صفحہ ' . $page . ' حاصل کر رہے ہیں');
+                $products_page = $api->get_products(100, $page);
+                
+                if (is_wp_error($products_page)) {
+                    error_log('[v0] خطا صفحہ ' . $page . ': ' . $products_page->get_error_message());
+                    // خطا کے باوجود جاری رکھیں
+                    break;
+                }
+                
+                if (empty($products_page)) {
+                    error_log('[v0] صفحہ ' . $page . ' سے کوئی محصول نہیں');
+                    break;
+                }
+                
+                if (!is_array($products_page)) {
+                    error_log('[v0] غلط قسم کا ڈیٹا صفحہ ' . $page . ' سے: ' . gettype($products_page));
+                    break;
+                }
+                
+                error_log('[v0] صفحہ ' . $page . ' سے ' . count($products_page) . ' محصول ملے');
+                $all_products = array_merge($all_products, $products_page);
+                
+                if (count($products_page) < 100) {
+                    break; // آخری صفحہ ہے
+                }
+                
+                $page++;
+            }
+            
+            error_log('[v0] کل سائٹ 2 کے محصولات: ' . count($all_products));
+            
+            // داتے کو صحیح طریقے سے فارمیٹ کریں
+            $site2_data = array_map(function($p) {
+                $id = isset($p['id']) ? $p['id'] : (isset($p->id) ? $p->id : null);
+                $name = isset($p['name']) ? $p['name'] : (isset($p->name) ? $p->name : 'نام نہیں');
+                $sku = isset($p['sku']) ? $p['sku'] : (isset($p->sku) ? $p->sku : '');
+                
+                return [
+                    'id' => (int)$id, 
+                    'name' => sanitize_text_field($name), 
+                    'sku' => !empty($sku) ? sanitize_text_field($sku) : 'بغیر SKU'
+                ];
+            }, $all_products);
+            
+        } catch (Exception $e) {
+            $error_msg = 'استثنا: ' . $e->getMessage();
+            error_log('[v0] خطا: ' . $error_msg);
+            // اگر API میں خرابی ہو تو خالی ڈیٹا بھیجیں لیکن سائٹ 1 ہمیشہ دیں
+        }
+        
+        error_log('[v0] حتمی نتیجہ - سائٹ1: ' . count($site1_data) . ', سائٹ2: ' . count($site2_data));
+        
+        wp_send_json_success([
+            'site1' => $site1_data,
+            'site2' => $site2_data
+        ]);
+    }
+        
         // بررسی تنظیمات
         $site1_url = Inventory_Sync_Settings::get_site1_url();
         $site2_url = Inventory_Sync_Settings::get_site2_url();
@@ -312,9 +420,17 @@ class Inventory_Sync_Admin {
             wp_send_json_error('تنظیمات سایت 2 کامل نیست. لطفا ابتدا تب تنظیمات را بررسی کنید.');
         }
         
+        // سایت 1 محصولات
         $site1_products = wc_get_products(['limit' => 500, 'status' => 'publish']);
-        $site2_products = [];
-        $error_msg = '';
+        $site1_data = array_map(function($p) {
+            return [
+                'id' => $p->get_id(), 
+                'name' => $p->get_name(), 
+                'sku' => $p->get_sku() ?: 'N/A'
+            ];
+        }, $site1_products);
+        
+        $site2_data = [];
         
         // سائٹ 2 سے محصولات حاصل کریں
         try {
@@ -324,35 +440,60 @@ class Inventory_Sync_Admin {
                 $site2_secret
             );
             
-            $site2_data = $api->get_products(500);
+            // صفحات کے ذریعے لوپ کریں تاکہ تمام محصولات حاصل کریں
+            $page = 1;
+            $all_products = [];
+            $max_pages = 10; // محدود کریں 10 صفحات تک
             
-            if (is_wp_error($site2_data)) {
-                $error_msg = 'خطا در دریافت محصولات سایت 2: ' . $site2_data->get_error_message();
-                error_log('[Inventory Sync] ' . $error_msg);
-                wp_send_json_error($error_msg);
+            while ($page <= $max_pages) {
+                error_log('[v0] سایت 2 محصولات حاصل کریں صفحہ: ' . $page);
+                $products_page = $api->get_products(100, $page);
+                
+                if (is_wp_error($products_page)) {
+                    error_log('[v0] خطا صفحہ ' . $page . ': ' . $products_page->get_error_message());
+                    break;
+                }
+                
+                if (empty($products_page) || !is_array($products_page)) {
+                    error_log('[v0] صفحہ ' . $page . ' سے کوئی محصول نہیں');
+                    break;
+                }
+                
+                $all_products = array_merge($all_products, $products_page);
+                
+                if (count($products_page) < 100) {
+                    break; // آخری صفحہ ہے
+                }
+                
+                $page++;
             }
             
-            $site2_products = $site2_data ?: [];
+            // داتے کو فارمیٹ کریں
+            $site2_data = array_map(function($p) {
+                return [
+                    'id' => $p['id'] ?? $p->id ?? null, 
+                    'name' => $p['name'] ?? $p->name ?? 'Unknown', 
+                    'sku' => $p['sku'] ?? $p->sku ?? 'N/A'
+                ];
+            }, $all_products);
             
-            if (empty($site2_products)) {
-                error_log('[Inventory Sync] هیچ محصول برای سایت 2 دریافت نشد');
-                wp_send_json_error('محصولات سایت 2 دریافت نشد. API اتصال را تست کنید.');
+            error_log('[v0] کل محصولات حاصل کئے گئے: سائٹ1=' . count($site1_data) . ', سائٹ2=' . count($site2_data));
+            
+            if (empty($site2_data)) {
+                error_log('[v0] متنبہ: سائٹ 2 سے کوئی محصول حاصل نہیں ہوا');
+                wp_send_json_error('سائٹ 2 سے کوئی محصول حاصل نہیں ہوا۔ API تنظیمات اور اتصال کو دوبارہ جانچیں۔');
             }
             
         } catch (Exception $e) {
-            $error_msg = 'استثنا در دریافت محصولات سایت 2: ' . $e->getMessage();
-            error_log('[Inventory Sync] ' . $error_msg);
+            $error_msg = 'استثنا: ' . $e->getMessage();
+            error_log('[v0] ' . $error_msg);
             wp_send_json_error($error_msg);
         }
         
-        $data = [
-            'site1' => array_map(function($p) {
-                return ['id' => $p->get_id(), 'name' => $p->get_name(), 'sku' => $p->get_sku()];
-            }, $site1_products),
-            'site2' => $site2_products
-        ];
-        
-        wp_send_json_success($data);
+        wp_send_json_success([
+            'site1' => $site1_data,
+            'site2' => $site2_data
+        ]);
     }
     
     /**

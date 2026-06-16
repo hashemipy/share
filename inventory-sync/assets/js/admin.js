@@ -472,7 +472,12 @@
         // === Mapping Management ===
         loadProductSelects: function() {
             // نمایش loading indicator
-            $('#loading-indicator').show();
+            const $loader = $('#loading-indicator');
+            if ($loader.length) {
+                $loader.show();
+            }
+            
+            console.log('[v0] شروع بارگزاری محصولات...');
             
             $.ajax({
                 url: inventorySyncData.ajaxurl,
@@ -481,45 +486,98 @@
                     action: 'inventory_sync_get_all_products',
                     _ajax_nonce: inventorySyncData.nonce
                 },
+                timeout: 30000, // 30 ثانیہ timeout
                 success: (response) => {
+                    console.log('[v0] پاسخ موصول ہوا:', response);
+                    
                     if (response.success && response.data) {
                         const site1 = response.data.site1 || [];
                         const site2 = response.data.site2 || [];
                         
-                        console.log('[v0] محصولات با موفقیت بارگزاری شدند. سایت1:', site1.length, 'سایت2:', site2.length);
+                        console.log('[v0] محصولات موصول: سائٹ1=' + site1.length + ', سائٹ2=' + site2.length);
                         
                         this.populateSelect('#site1-product-select', site1);
                         this.populateSelect('#site2-product-select', site2);
                         
-                        // پنهان کردن loading indicator
-                        $('#loading-indicator').hide();
+                        // پنہان کریں اور کامیابی کا پیغام دکھائیں
+                        if ($loader.length) {
+                            $loader.html(
+                                '<strong style="color: green;">✓ کامیاب:</strong> ' + 
+                                site1.length + ' محصولات سائٹ 1 اور ' + 
+                                site2.length + ' محصولات سائٹ 2 سے لوڈ ہو گئے'
+                            ).css('background', '#d4edda').css('border-color', '#c3e6cb').show();
+                            
+                            // 3 سیکنڈ بعد پنہان کریں
+                            setTimeout(() => $loader.fadeOut(), 3000);
+                        }
                     } else {
-                        console.error('[v0] پاسخ نامعتبر:', response);
-                        $('#loading-indicator').html('<span style="color: red;">خطا: پاسخ نامعتبر است</span>').show();
+                        console.error('[v0] نامعلوم پاسخ:', response);
+                        this.showLoadingError(
+                            response.data || 'نامعلوم خرابی'
+                        );
                     }
                 },
                 error: (xhr, status, error) => {
-                    console.error('[v0] خطا در بارگزاری محصولات:', error, xhr.responseText);
-                    const errorMsg = xhr.responseJSON?.data || 'خطا در بارگزاری محصولات. تنظیمات و اتصال API را بررسی کنید.';
+                    console.error('[v0] AJAX خرابی:', status, error, xhr.responseText);
                     
-                    $('#loading-indicator').html(
-                        '<strong style="color: red;">❌ خطا:</strong> ' + errorMsg + 
-                        '<br><small style="color: #666; margin-top: 10px; display: block;">لطفا تب تنظیمات را بررسی کنید و اتصال API را تست کنید.</small>'
-                    ).show();
+                    let errorMsg = 'نامعلوم خرابی';
                     
-                    // در صورت خطا، select ها را خالی کن
+                    if (status === 'timeout') {
+                        errorMsg = 'درخواست میں بہت زیادہ وقت لگ گیا۔ براہ مہربانی دوبارہ کوشش کریں۔';
+                    } else if (xhr.responseJSON && xhr.responseJSON.data) {
+                        errorMsg = xhr.responseJSON.data;
+                    } else if (xhr.responseText) {
+                        try {
+                            const parsed = JSON.parse(xhr.responseText);
+                            errorMsg = parsed.data || parsed.message || errorMsg;
+                        } catch (e) {
+                            errorMsg = xhr.responseText.substring(0, 200);
+                        }
+                    }
+                    
+                    this.showLoadingError(errorMsg);
+                    
+                    // خالی dropdowns
                     this.populateSelect('#site1-product-select', []);
                     this.populateSelect('#site2-product-select', []);
                 }
             });
         },
         
+        showLoadingError: function(errorMsg) {
+            const $loader = $('#loading-indicator');
+            if ($loader.length) {
+                $loader.html(
+                    '<strong style="color: red;">❌ خرابی:</strong> ' + errorMsg + 
+                    '<br><small style="color: #666; margin-top: 10px; display: block;">' +
+                    'براہ مہربانی:<br>' +
+                    '1. تنظیمات ٹیب میں جائیں<br>' +
+                    '2. سائٹ 2 کی API تنظیمات کو تصدیق کریں<br>' +
+                    '3. "اتصال کی جانچ" بٹن پر کلک کریں<br>' +
+                    '4. اگر مسئلہ برقرار رہے تو براہ کرم براہ کرم دوبارہ کوشش کریں' +
+                    '</small>'
+                ).css('background', '#f8d7da').css('border-color', '#f5c6cb').show();
+            }
+        },
+        
         populateSelect: function(selector, products) {
+            const $select = $(selector);
+            
+            if (!products || products.length === 0) {
+                $select.html('<option value="">کوئی محصول دستیاب نہیں</option>');
+                console.warn('[v0] ' + selector + ' کے لیے کوئی محصول نہیں');
+                return;
+            }
+            
             let html = '<option value="">انتخاب کنید...</option>';
             products.forEach(p => {
-                html += `<option value="${p.id}" data-sku="${p.sku}">${p.name}</option>`;
+                if (p.id && p.name) {
+                    html += `<option value="${p.id}" data-sku="${p.sku || 'N/A'}">${p.name} (${p.sku || 'بغیر SKU'})</option>`;
+                }
             });
-            $(selector).html(html);
+            
+            $select.html(html);
+            console.log('[v0] ' + selector + ' میں ' + products.length + ' محصولات شامل کیے گئے');
         },
         
         updateSite1ProductInfo: function(e) {
@@ -540,7 +598,7 @@
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_get_mappings',
-                    nonce: inventorySyncData.nonce
+                    _ajax_nonce: inventorySyncData.nonce
                 },
                 success: (response) => {
                     if (response.success) {
