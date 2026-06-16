@@ -626,7 +626,6 @@
             e.preventDefault();
             const $btn = $(e.target).closest('button');
             const id = $btn.data('id');
-            const enabled = $btn.data('enabled');
             
             $.ajax({
                 url: inventorySyncData.ajaxurl,
@@ -634,13 +633,17 @@
                 data: {
                     action: 'inventory_sync_toggle_mapping',
                     nonce: inventorySyncData.nonce,
-                    mapping_id: id,
-                    enabled: enabled ? 0 : 1
+                    mapping_id: id
                 },
                 success: (response) => {
                     if (response.success) {
                         this.loadMappings();
+                    } else {
+                        alert('خرابی: ' + response.data);
                     }
+                },
+                error: () => {
+                    alert('سرور سے رابطہ نہیں ہو سکا');
                 }
             });
         },

@@ -302,26 +302,48 @@ class Inventory_Sync_Admin {
             wp_send_json_error('رسائی نہیں');
         }
         
+        // سائٹ 1: WooCommerce محصولات
         $site1_products = wc_get_products(['limit' => 500, 'status' => 'publish']);
-        $site2_products = [];
+        $site1_data = [];
         
-        // اگر remote API ہے تو سائٹ 2 سے بھی حاصل کریں
+        if (is_array($site1_products) && !empty($site1_products)) {
+            $site1_data = array_map(function($p) {
+                return [
+                    'id' => $p->get_id(),
+                    'name' => $p->get_name(),
+                    'sku' => $p->get_sku() ?? ''
+                ];
+            }, $site1_products);
+        }
+        
+        // سائٹ 2: Remote API محصولات
+        $site2_data = [];
         try {
             $api = new Inventory_Sync_API(
                 Inventory_Sync_Settings::get_site2_url(),
                 Inventory_Sync_Settings::get_site2_key(),
                 Inventory_Sync_Settings::get_site2_secret()
             );
-            $site2_products = $api->get_products(500) ?: [];
+            
+            $response = $api->get_products(500);
+            
+            // اگر response ایک آرایہ ہے اور خالی نہیں ہے
+            if (is_array($response) && !isset($response['code'])) {
+                $site2_data = array_map(function($p) {
+                    return [
+                        'id' => isset($p['id']) ? intval($p['id']) : null,
+                        'name' => isset($p['name']) ? sanitize_text_field($p['name']) : 'نامشخص',
+                        'sku' => isset($p['sku']) ? sanitize_text_field($p['sku']) : ''
+                    ];
+                }, $response);
+            }
         } catch (Exception $e) {
-            // API میں مسئلہ - خالی رہے گا
+            // API خرابی - خالی رہے گا
         }
         
         $data = [
-            'site1' => array_map(function($p) {
-                return ['id' => $p->get_id(), 'name' => $p->get_name(), 'sku' => $p->get_sku()];
-            }, $site1_products),
-            'site2' => $site2_products
+            'site1' => $site1_data,
+            'site2' => $site2_data
         ];
         
         wp_send_json_success($data);
@@ -342,13 +364,34 @@ class Inventory_Sync_Admin {
             "SELECT * FROM {$wpdb->prefix}inventory_sync_mapping ORDER BY created_at DESC LIMIT 100"
         );
         
+        // ہر mapping کے لیے محصول کی معلومات شامل کریں
         foreach ($mappings as $m) {
+            // سائٹ 1: Local WooCommerce
             $p1 = wc_get_product($m->site1_product_id);
-            $p2 = wc_get_product($m->site2_product_id);
             $m->site1_name = $p1 ? $p1->get_name() : 'حذف شدہ';
-            $m->site2_name = $p2 ? $p2->get_name() : 'حذف شدہ';
+            $m->site1_sku = $p1 ? $p1->get_sku() : $m->site1_sku;
             $m->site1_stock = $p1 ? $p1->get_stock_quantity() : 0;
-            $m->site2_stock = $p2 ? $p2->get_stock_quantity() : 0;
+            
+            // سائٹ 2: Remote API (اگر دستیاب ہو)
+            $m->site2_name = 'نامشخص';
+            $m->site2_stock = 0;
+            
+            try {
+                $api = new Inventory_Sync_API(
+                    Inventory_Sync_Settings::get_site2_url(),
+                    Inventory_Sync_Settings::get_site2_key(),
+                    Inventory_Sync_Settings::get_site2_secret()
+                );
+                
+                $response = $api->get_product($m->site2_product_id);
+                if (is_array($response) && !isset($response['code'])) {
+                    $m->site2_name = isset($response['name']) ? sanitize_text_field($response['name']) : 'نامشخص';
+                    $m->site2_stock = isset($response['stock_quantity']) ? intval($response['stock_quantity']) : 0;
+                    $m->site2_sku = isset($response['sku']) ? sanitize_text_field($response['sku']) : $m->site2_sku;
+                }
+            } catch (Exception $e) {
+                // سائٹ 2 دستیاب نہیں
+            }
         }
         
         wp_send_json_success($mappings);
@@ -372,11 +415,33 @@ class Inventory_Sync_Admin {
             wp_send_json_error('محصول شناخت غلط ہے');
         }
         
+        // صرف سائٹ 1 کو چیک کریں (یہ local ہے)
         $p1 = wc_get_product($site1_id);
-        $p2 = wc_get_product($site2_id);
+        if (!$p1) {
+            wp_send_json_error('سائٹ 1 میں محصول موجود نہیں');
+        }
         
-        if (!$p1 || !$p2) {
-            wp_send_json_error('محصول موجود نہیں');
+        // سائٹ 2 کی معلومات حاصل کریں (ممکن ہے remote ہو)
+        $site2_sku = '';
+        $site2_name = '';
+        
+        try {
+            $api = new Inventory_Sync_API(
+                Inventory_Sync_Settings::get_site2_url(),
+                Inventory_Sync_Settings::get_site2_key(),
+                Inventory_Sync_Settings::get_site2_secret()
+            );
+            
+            $products = $api->get_products(1, $site2_id);
+            if (is_array($products) && !empty($products)) {
+                $p2 = $products[0];
+                $site2_sku = isset($p2['sku']) ? sanitize_text_field($p2['sku']) : '';
+                $site2_name = isset($p2['name']) ? sanitize_text_field($p2['name']) : '';
+            } else {
+                wp_send_json_error('سائٹ 2 میں محصول موجود نہیں');
+            }
+        } catch (Exception $e) {
+            wp_send_json_error('سائٹ 2 سے رابطہ نہیں ہو سکا');
         }
         
         $result = $wpdb->insert(
@@ -384,17 +449,18 @@ class Inventory_Sync_Admin {
             [
                 'site1_product_id' => $site1_id,
                 'site2_product_id' => $site2_id,
-                'site1_sku' => $p1->get_sku(),
-                'site2_sku' => $p2->get_sku(),
+                'site1_sku' => $p1->get_sku() ?? '',
+                'site2_sku' => $site2_sku,
                 'sync_enabled' => 1,
                 'created_at' => current_time('mysql')
-            ]
+            ],
+            ['%d', '%d', '%s', '%s', '%d', '%s']
         );
         
         if ($result) {
             wp_send_json_success('Mapping اضافہ ہو گیا');
         } else {
-            wp_send_json_error('خرابی');
+            wp_send_json_error('ڈیٹا بیس میں خرابی: ' . $wpdb->last_error);
         }
     }
     
@@ -443,15 +509,42 @@ class Inventory_Sync_Admin {
         
         global $wpdb;
         $mapping_id = intval($_POST['mapping_id'] ?? 0);
-        $enabled = intval($_POST['enabled'] ?? 0);
         
-        $wpdb->update(
-            $wpdb->prefix . 'inventory_sync_mapping',
-            ['sync_enabled' => $enabled],
-            ['id' => $mapping_id]
+        if (!$mapping_id) {
+            wp_send_json_error('Mapping ID غلط ہے');
+        }
+        
+        // موجودہ state حاصل کریں
+        $current = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT sync_enabled FROM {$wpdb->prefix}inventory_sync_mapping WHERE id = %d",
+                $mapping_id
+            )
         );
         
-        wp_send_json_success('اپڈیٹ ہو گیا');
+        if (!$current) {
+            wp_send_json_error('Mapping موجود نہیں');
+        }
+        
+        // toggle کریں
+        $new_state = $current->sync_enabled ? 0 : 1;
+        
+        $result = $wpdb->update(
+            $wpdb->prefix . 'inventory_sync_mapping',
+            ['sync_enabled' => $new_state],
+            ['id' => $mapping_id],
+            ['%d'],
+            ['%d']
+        );
+        
+        if ($result !== false) {
+            wp_send_json_success([
+                'enabled' => $new_state,
+                'message' => $new_state ? 'فعال ہو گیا' : 'غیر فعال ہو گیا'
+            ]);
+        } else {
+            wp_send_json_error('اپڈیٹ میں خرابی');
+        }
     }
     
     /**
@@ -467,11 +560,32 @@ class Inventory_Sync_Admin {
         global $wpdb;
         $mapping_id = intval($_POST['mapping_id'] ?? 0);
         
-        $wpdb->delete(
-            $wpdb->prefix . 'inventory_sync_mapping',
-            ['id' => $mapping_id]
+        if (!$mapping_id) {
+            wp_send_json_error('Mapping ID غلط ہے');
+        }
+        
+        // پہلے چیک کریں کہ موجود ہے
+        $exists = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}inventory_sync_mapping WHERE id = %d",
+                $mapping_id
+            )
         );
         
-        wp_send_json_success('حذف ہو گیا');
+        if (!$exists) {
+            wp_send_json_error('Mapping موجود نہیں');
+        }
+        
+        $result = $wpdb->delete(
+            $wpdb->prefix . 'inventory_sync_mapping',
+            ['id' => $mapping_id],
+            ['%d']
+        );
+        
+        if ($result) {
+            wp_send_json_success('حذف ہو گیا');
+        } else {
+            wp_send_json_error('ڈیٹا بیس خرابی: ' . $wpdb->last_error);
+        }
     }
 }
