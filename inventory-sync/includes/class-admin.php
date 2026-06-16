@@ -302,27 +302,61 @@ class Inventory_Sync_Admin {
             wp_send_json_error('رسائی نہیں');
         }
         
+        // Site 1 محصولات
         $site1_products = wc_get_products(['limit' => 500, 'status' => 'publish']);
-        $site2_products = [];
+        $site1_data = array_map(function($p) {
+            return [
+                'id' => $p->get_id(), 
+                'name' => $p->get_name(), 
+                'sku' => $p->get_sku()
+            ];
+        }, $site1_products);
         
-        // اگر remote API ہے تو سائٹ 2 سے بھی حاصل کریں
-        try {
-            $api = new Inventory_Sync_API(
-                Inventory_Sync_Settings::get_site2_url(),
-                Inventory_Sync_Settings::get_site2_key(),
-                Inventory_Sync_Settings::get_site2_secret()
-            );
-            $site2_products = $api->get_products(500) ?: [];
-        } catch (Exception $e) {
-            // API میں مسئلہ - خالی رہے گا
+        error_log('[Inventory Sync] Site 1 محصولات: ' . count($site1_data));
+        
+        // Site 2 محصولات
+        $site2_data = [];
+        $site2_url = Inventory_Sync_Settings::get_site2_url();
+        $site2_key = Inventory_Sync_Settings::get_site2_key();
+        $site2_secret = Inventory_Sync_Settings::get_site2_secret();
+        
+        error_log('[Inventory Sync] Site2 URL: ' . ($site2_url ? 'موجود' : 'نہیں'));
+        error_log('[Inventory Sync] Site2 Key: ' . ($site2_key ? 'موجود' : 'نہیں'));
+        
+        // اگر site2 API معلومات موجود ہیں تو API سے لیں
+        if (!empty($site2_url) && !empty($site2_key) && !empty($site2_secret)) {
+            try {
+                $api = new Inventory_Sync_API($site2_url, $site2_key, $site2_secret);
+                $remote_products = $api->get_products(500);
+                
+                if (!is_wp_error($remote_products) && is_array($remote_products)) {
+                    error_log('[Inventory Sync] Site2 سے ' . count($remote_products) . ' محصولات ملے');
+                    
+                    // API داده کو صحیح فارمیٹ میں تبدیل کریں
+                    $site2_data = array_map(function($p) {
+                        return [
+                            'id' => isset($p['id']) ? $p['id'] : (isset($p->id) ? $p->id : ''),
+                            'name' => isset($p['name']) ? $p['name'] : (isset($p->name) ? $p->name : 'N/A'),
+                            'sku' => isset($p['sku']) ? $p['sku'] : (isset($p->sku) ? $p->sku : '')
+                        ];
+                    }, $remote_products);
+                } else {
+                    $error_msg = is_wp_error($remote_products) ? $remote_products->get_error_message() : 'نامعلوم خرابی';
+                    error_log('[Inventory Sync] Site 2 API خرابی: ' . $error_msg);
+                }
+            } catch (Exception $e) {
+                error_log('[Inventory Sync] Site 2 Exception: ' . $e->getMessage());
+            }
+        } else {
+            error_log('[Inventory Sync] Site2 معلومات مکمل نہیں ہے');
         }
         
         $data = [
-            'site1' => array_map(function($p) {
-                return ['id' => $p->get_id(), 'name' => $p->get_name(), 'sku' => $p->get_sku()];
-            }, $site1_products),
-            'site2' => $site2_products
+            'site1' => $site1_data,
+            'site2' => $site2_data
         ];
+        
+        error_log('[Inventory Sync] آخری ڈیٹا - Site1: ' . count($data['site1']) . ', Site2: ' . count($data['site2']));
         
         wp_send_json_success($data);
     }

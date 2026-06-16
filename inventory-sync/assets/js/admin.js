@@ -476,7 +476,7 @@
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_get_all_products',
-                    nonce: inventorySyncData.nonce
+                    _ajax_nonce: inventorySyncData.nonce
                 },
                 success: (response) => {
                     if (response.success && response.data) {
@@ -485,17 +485,34 @@
                         
                         this.populateSelect('#site1-product-select', site1);
                         this.populateSelect('#site2-product-select', site2);
+                    } else {
+                        console.log('[v0] خطا: محصولات لوڈ نہیں ہو سکے', response);
                     }
+                },
+                error: (xhr, status, error) => {
+                    console.log('[v0] AJAX خطا:', error, xhr.responseText);
                 }
             });
         },
         
         populateSelect: function(selector, products) {
+            console.log('[v0] populateSelect برائے ' + selector, products);
+            
+            if (!products || products.length === 0) {
+                console.log('[v0] کوئی محصول نہیں:', selector);
+                $(selector).html('<option value="">کوئی محصول نہیں ملا</option>');
+                return;
+            }
+            
             let html = '<option value="">انتخاب کنید...</option>';
             products.forEach(p => {
-                html += `<option value="${p.id}" data-sku="${p.sku}">${p.name}</option>`;
+                const productName = p.name || 'نام نہیں ہے';
+                const productId = p.id || '';
+                const productSku = p.sku || '';
+                html += `<option value="${productId}" data-sku="${productSku}">${productName}</option>`;
             });
             $(selector).html(html);
+            console.log('[v0] منتخب کریں محصولات:', selector, products.length);
         },
         
         updateSite1ProductInfo: function(e) {
@@ -516,7 +533,7 @@
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_get_mappings',
-                    nonce: inventorySyncData.nonce
+                    _ajax_nonce: inventorySyncData.nonce
                 },
                 success: (response) => {
                     if (response.success) {
@@ -568,7 +585,7 @@
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_add_mapping',
-                    nonce: inventorySyncData.nonce,
+                    _ajax_nonce: inventorySyncData.nonce,
                     site1_product_id: site1,
                     site2_product_id: site2
                 },
@@ -591,7 +608,7 @@
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_sync_all_mappings',
-                    nonce: inventorySyncData.nonce
+                    _ajax_nonce: inventorySyncData.nonce
                 },
                 success: (response) => {
                     if (response.success) {
@@ -611,7 +628,7 @@
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_sync_mapping',
-                    nonce: inventorySyncData.nonce,
+                    _ajax_nonce: inventorySyncData.nonce,
                     mapping_id: id
                 },
                 success: (response) => {
@@ -633,7 +650,7 @@
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_toggle_mapping',
-                    nonce: inventorySyncData.nonce,
+                    _ajax_nonce: inventorySyncData.nonce,
                     mapping_id: id,
                     enabled: enabled ? 0 : 1
                 },
@@ -656,7 +673,7 @@
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_delete_mapping',
-                    nonce: inventorySyncData.nonce,
+                    _ajax_nonce: inventorySyncData.nonce,
                     mapping_id: id
                 },
                 success: (response) => {
