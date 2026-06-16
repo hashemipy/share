@@ -471,6 +471,8 @@
         
         // === Mapping Management ===
         loadProductSelects: function() {
+            console.log("[v0] Starting to load products from both sites...");
+            
             $.ajax({
                 url: inventorySyncData.ajaxurl,
                 type: 'POST',
@@ -479,38 +481,151 @@
                     nonce: inventorySyncData.nonce
                 },
                 success: (response) => {
+                    console.log("[v0] Products loaded:", response);
+                    
                     if (response.success && response.data) {
                         const site1 = response.data.site1 || [];
                         const site2 = response.data.site2 || [];
                         
-                        this.populateSelect('#site1-product-select', site1);
-                        this.populateSelect('#site2-product-select', site2);
+                        console.log("[v0] Site1 products count:", site1.length);
+                        console.log("[v0] Site2 products count:", site2.length);
+                        
+                        // پر کردن دروپ‌داون‌ها
+                        this.populateSelect('#site1-product-select', site1, 'سایت 1');
+                        this.populateSelect('#site2-product-select', site2, 'سایت 2');
+                        
+                        // اگر سایت 2 مشکل داشته باشد
+                        if (site2.length === 0) {
+                            console.warn("[v0] Site2 products not available or error occurred");
+                            const errorDiv = $('#site2-product-select').next('.mapping-error-msg');
+                            if (errorDiv.length === 0) {
+                                $('#site2-product-select').after(
+                                    '<div class="mapping-error-msg" style="color: #d32f2f; font-size: 12px; margin-top: 5px;">⚠️ محصولات سایت 2 دریافت نشد. اتصال API را بررسی کنید.</div>'
+                                );
+                            }
+                        } else {
+                            // حذف پیام خطا اگر موجود باشد
+                            $('#site2-product-select').next('.mapping-error-msg').remove();
+                        }
+                    } else {
+                        console.error("[v0] API Response failed");
+                        alert('خطا در دریافت محصولات');
                     }
+                },
+                error: (xhr, status, error) => {
+                    console.error("[v0] AJAX Error:", error, xhr.responseText);
+                    alert('خطا در ارتباط با سرور');
                 }
             });
         },
         
-        populateSelect: function(selector, products) {
-            let html = '<option value="">انتخاب کنید...</option>';
-            products.forEach(p => {
-                html += `<option value="${p.id}" data-sku="${p.sku}">${p.name}</option>`;
+        populateSelect: function(selector, products, siteName = '') {
+            console.log(`[v0] Populating ${selector} with ${products.length} products`);
+            
+            const $select = $(selector);
+            const defaultOption = '<option value="">-- انتخاب کنید --</option>';
+            
+            // ریست کردن گزینه‌های قدیمی
+            $select.html(defaultOption);
+            
+            if (!products || products.length === 0) {
+                console.warn(`[v0] No products found for ${siteName}`);
+                return;
+            }
+            
+            // افزودن محصولات
+            products.forEach(product => {
+                const skuText = product.sku ? `, SKU: ${product.sku}` : '';
+                const optionText = `${product.name} (ID: ${product.id}${skuText})`;
+                $select.append(`<option value="${product.id}" data-sku="${product.sku || ''}">${optionText}</option>`);
             });
-            $(selector).html(html);
         },
         
         updateSite1ProductInfo: function(e) {
-            const option = $(e.target).find('option:selected');
-            $('#site1-product-id').text(option.val() || '-');
-            $('#site1-product-sku').text(option.data('sku') || '-');
+            const $select = $(e.target);
+            const option = $select.find('option:selected');
+            const infoDiv = $('#site1-product-info');
+            
+            if (option.val()) {
+                $('#site1-product-id').text(option.val());
+                $('#site1-product-sku').text(option.data('sku') || '-');
+                infoDiv.show();
+            } else {
+                infoDiv.hide();
+            }
         },
         
         updateSite2ProductInfo: function(e) {
-            const option = $(e.target).find('option:selected');
-            $('#site2-product-id').text(option.val() || '-');
-            $('#site2-product-sku').text(option.data('sku') || '-');
+            const $select = $(e.target);
+            const option = $select.find('option:selected');
+            const infoDiv = $('#site2-product-info');
+            
+            if (option.val()) {
+                $('#site2-product-id').text(option.val());
+                $('#site2-product-sku').text(option.data('sku') || '-');
+                infoDiv.show();
+            } else {
+                infoDiv.hide();
+            }
+        },
+        
+        addMapping: function(e) {
+            e.preventDefault();
+            
+            const site1ProductId = $('#site1-product-select').val();
+            const site2ProductId = $('#site2-product-select').val();
+            const errorDiv = $('#mapping-form-errors');
+            
+            // خطاگیری
+            if (!site1ProductId || !site2ProductId) {
+                errorDiv.html('⚠️ لطفاً هر دو محصول را انتخاب کنید').show();
+                return;
+            }
+            
+            if (site1ProductId === site2ProductId) {
+                errorDiv.html('⚠️ نمی‌توانید یک محصول را با خود متصل کنید').show();
+                return;
+            }
+            
+            errorDiv.hide();
+            
+            console.log(`[v0] Adding mapping: ${site1ProductId} <-> ${site2ProductId}`);
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_add_mapping',
+                    nonce: inventorySyncData.nonce,
+                    site1_product_id: site1ProductId,
+                    site2_product_id: site2ProductId
+                },
+                success: (response) => {
+                    if (response.success) {
+                        console.log("[v0] Mapping added successfully");
+                        // پاک کردن فرم
+                        $('#site1-product-select').val('');
+                        $('#site2-product-select').val('');
+                        $('#site1-product-info').hide();
+                        $('#site2-product-info').hide();
+                        
+                        // بارگذاری دوباره لیست
+                        this.loadMappings();
+                        alert('✓ اتصال با موفقیت افزوده شد');
+                    } else {
+                        errorDiv.html('✗ خطا: ' + response.data).show();
+                    }
+                },
+                error: (xhr, status, error) => {
+                    console.error("[v0] Error adding mapping:", error);
+                    errorDiv.html('✗ خطا در ارتباط با سرور').show();
+                }
+            });
         },
         
         loadMappings: function() {
+            console.log("[v0] Loading mappings...");
+            
             $.ajax({
                 url: inventorySyncData.ajaxurl,
                 type: 'POST',
@@ -519,72 +634,79 @@
                     nonce: inventorySyncData.nonce
                 },
                 success: (response) => {
+                    console.log("[v0] Mappings loaded:", response);
+                    
                     if (response.success) {
                         this.renderMappings(response.data);
+                    } else {
+                        $('.mappings-list').html(
+                            '<tr><td colspan="7" style="text-align: center; padding: 20px; color: #d32f2f;">✗ خطا در دریافت اتصالات</td></tr>'
+                        );
                     }
+                },
+                error: (xhr, status, error) => {
+                    console.error("[v0] Error loading mappings:", error);
+                    $('.mappings-list').html(
+                        '<tr><td colspan="7" style="text-align: center; padding: 20px; color: #d32f2f;">✗ خطا در ارتباط با سرور</td></tr>'
+                    );
                 }
             });
         },
         
         renderMappings: function(mappings) {
+            console.log("[v0] Rendering mappings, count:", mappings ? mappings.length : 0);
+            
             if (!mappings || mappings.length === 0) {
-                $('.mappings-list').html('<tr><td colspan="7" style="text-align: center; padding: 20px;">کوئی mapping موجود نہیں</td></tr>');
+                $('.mappings-list').html(
+                    '<tr><td colspan="7" style="text-align: center; padding: 30px; color: #999;">📭 هیچ اتصالی موجود نیست</td></tr>'
+                );
                 return;
             }
             
             let html = '';
-            mappings.forEach(m => {
-                const status = m.sync_enabled ? '✅' : '⏸️';
+            mappings.forEach((mapping, index) => {
+                const statusIcon = mapping.is_active ? '✓ فعال' : '✗ غیر فعال';
+                const statusColor = mapping.is_active ? '#4caf50' : '#999';
+                const statusBg = mapping.is_active ? '#f1f8f4' : '#f5f5f5';
+                
+                const lastSyncDate = mapping.last_sync ? new Date(mapping.last_sync * 1000).toLocaleString('fa-IR') : '-';
+                
                 html += `
                     <tr style="border-bottom: 1px solid #eee;">
-                        <td style="text-align: center; font-size: 18px;">${status}</td>
-                        <td><strong>${m.site1_name}</strong><br><small style="color: #999;">SKU: ${m.site1_sku}</small></td>
-                        <td style="text-align: center; font-weight: bold; color: ${m.site1_stock > 0 ? '#28a745' : '#dc3545'};">${m.site1_stock}</td>
-                        <td style="text-align: center;">↔</td>
-                        <td><strong>${m.site2_name}</strong><br><small style="color: #999;">SKU: ${m.site2_sku}</small></td>
-                        <td style="text-align: center; font-weight: bold; color: ${m.site2_stock > 0 ? '#28a745' : '#dc3545'};">${m.site2_stock}</td>
-                        <td style="text-align: center;">
-                            <button class="button button-small sync-mapping-btn" data-id="${m.id}" style="margin: 2px;">🔄</button>
-                            <button class="button button-small toggle-mapping-btn" data-id="${m.id}" data-enabled="${m.sync_enabled}" style="margin: 2px;">${m.sync_enabled ? '⏸️' : '▶️'}</button>
-                            <button class="button button-small delete-mapping-btn" data-id="${m.id}" style="margin: 2px; color: #dc3545;">🗑️</button>
+                        <td style="padding: 12px; text-align: center; color: ${statusColor}; font-weight: 600;">${statusIcon}</td>
+                        <td style="padding: 12px;">
+                            <strong>${mapping.site1_name || 'نامشخص'}</strong>
+                            <br><small style="color: #999;">ID: ${mapping.site1_product_id} | SKU: ${mapping.site1_sku || '-'}</small>
+                        </td>
+                        <td style="padding: 12px; text-align: center;">
+                            <span style="background: #e3f2fd; padding: 4px 8px; border-radius: 3px; font-size: 13px;">${mapping.site1_stock || 0}</span>
+                        </td>
+                        <td style="padding: 12px; text-align: center; color: #666; font-size: 16px;">↔</td>
+                        <td style="padding: 12px;">
+                            <strong>${mapping.site2_name || 'نامشخص'}</strong>
+                            <br><small style="color: #999;">ID: ${mapping.site2_product_id} | SKU: ${mapping.site2_sku || '-'}</small>
+                        </td>
+                        <td style="padding: 12px; text-align: center;">
+                            <span style="background: #f3e5f5; padding: 4px 8px; border-radius: 3px; font-size: 13px;">${mapping.site2_stock || 0}</span>
+                        </td>
+                        <td style="padding: 12px; text-align: center; white-space: nowrap;">
+                            <button class="button sync-mapping-btn" data-id="${mapping.id}" style="padding: 4px 12px; font-size: 12px; margin: 2px;">⚡ هماهنگ</button>
+                            <button class="button toggle-mapping-btn" data-id="${mapping.id}" style="padding: 4px 12px; font-size: 12px; margin: 2px;">${mapping.is_active ? '🔒 غیرفعال' : '🔓 فعال'}</button>
+                            <button class="button delete-mapping-btn" data-id="${mapping.id}" style="padding: 4px 12px; font-size: 12px; margin: 2px; color: #d32f2f;">🗑️ حذف</button>
                         </td>
                     </tr>
                 `;
             });
+            
             $('.mappings-list').html(html);
         },
         
-        addMapping: function() {
-            const site1 = $('#site1-product-select').val();
-            const site2 = $('#site2-product-select').val();
+        syncAllMappings: function() {
+            console.log("[v0] Starting sync all mappings...");
             
-            if (!site1 || !site2) {
-                alert('لطفا دونوں محصولات انتخاب کریں');
+            if (!confirm('آیا می‌خواهید تمام اتصالات را هماهنگ کنید؟')) {
                 return;
             }
-            
-            $.ajax({
-                url: inventorySyncData.ajaxurl,
-                type: 'POST',
-                data: {
-                    action: 'inventory_sync_add_mapping',
-                    nonce: inventorySyncData.nonce,
-                    site1_product_id: site1,
-                    site2_product_id: site2
-                },
-                success: (response) => {
-                    if (response.success) {
-                        alert('Mapping افزوده شد');
-                        $('#site1-product-select').val('');
-                        $('#site2-product-select').val('');
-                        this.loadMappings();
-                    }
-                }
-            });
-        },
-        
-        syncAllMappings: function() {
-            if (!confirm('تمام mappings کو sync کریں؟')) return;
             
             $.ajax({
                 url: inventorySyncData.ajaxurl,
@@ -594,17 +716,31 @@
                     nonce: inventorySyncData.nonce
                 },
                 success: (response) => {
+                    console.log("[v0] Sync all completed:", response);
+                    
                     if (response.success) {
-                        alert('تمام mappings sync ہو گئے');
+                        alert('✓ تمام اتصالات با موفقیت هماهنگ شدند');
                         this.loadMappings();
+                    } else {
+                        alert('✗ خطا: ' + response.data);
                     }
+                },
+                error: (xhr, status, error) => {
+                    console.error("[v0] Error syncing all:", error);
+                    alert('✗ خطا در ارتباط با سرور');
                 }
             });
         },
         
         syncMapping: function(e) {
             e.preventDefault();
-            const id = $(e.target).closest('button').data('id');
+            const $btn = $(e.target).closest('button');
+            const id = $btn.data('id');
+            const originalText = $btn.text();
+            
+            console.log("[v0] Syncing mapping:", id);
+            
+            $btn.attr('disabled', true).text('⏳ درحال همزمان‌سازی...');
             
             $.ajax({
                 url: inventorySyncData.ajaxurl,
@@ -615,9 +751,20 @@
                     mapping_id: id
                 },
                 success: (response) => {
+                    console.log("[v0] Sync mapping completed:", response);
+                    
                     if (response.success) {
+                        alert('✓ هماهنگ‌سازی موفق');
                         this.loadMappings();
+                    } else {
+                        alert('✗ خطا: ' + response.data);
+                        $btn.attr('disabled', false).text(originalText);
                     }
+                },
+                error: (xhr, status, error) => {
+                    console.error("[v0] Error syncing mapping:", error);
+                    alert('✗ خطا در ارتباط با سرور');
+                    $btn.attr('disabled', false).text(originalText);
                 }
             });
         },
@@ -626,7 +773,11 @@
             e.preventDefault();
             const $btn = $(e.target).closest('button');
             const id = $btn.data('id');
-            const enabled = $btn.data('enabled');
+            const originalText = $btn.text();
+            
+            console.log("[v0] Toggling mapping:", id);
+            
+            $btn.attr('disabled', true).text('⏳ درحال تغییر...');
             
             $.ajax({
                 url: inventorySyncData.ajaxurl,
@@ -634,22 +785,38 @@
                 data: {
                     action: 'inventory_sync_toggle_mapping',
                     nonce: inventorySyncData.nonce,
-                    mapping_id: id,
-                    enabled: enabled ? 0 : 1
+                    mapping_id: id
                 },
                 success: (response) => {
+                    console.log("[v0] Toggle completed:", response);
+                    
                     if (response.success) {
                         this.loadMappings();
+                    } else {
+                        alert('✗ خطا: ' + response.data);
+                        $btn.attr('disabled', false).text(originalText);
                     }
+                },
+                error: (xhr, status, error) => {
+                    console.error("[v0] Error toggling mapping:", error);
+                    alert('✗ خطا در ارتباط با سرور');
+                    $btn.attr('disabled', false).text(originalText);
                 }
             });
         },
         
         deleteMapping: function(e) {
             e.preventDefault();
-            if (!confirm('کیا یقین ہیں؟')) return;
+            const $btn = $(e.target).closest('button');
+            const id = $btn.data('id');
             
-            const id = $(e.target).closest('button').data('id');
+            console.log("[v0] Deleting mapping:", id);
+            
+            if (!confirm('آیا از حذف این اتصال مطمئن هستید؟')) {
+                return;
+            }
+            
+            $btn.attr('disabled', true).text('⏳ درحال حذف...');
             
             $.ajax({
                 url: inventorySyncData.ajaxurl,
@@ -660,10 +827,20 @@
                     mapping_id: id
                 },
                 success: (response) => {
+                    console.log("[v0] Delete completed:", response);
+                    
                     if (response.success) {
-                        alert('Mapping حذف ہو گیا');
+                        alert('✓ اتصال با موفقیت حذف شد');
                         this.loadMappings();
+                    } else {
+                        alert('✗ خطا: ' + response.data);
+                        $btn.attr('disabled', false);
                     }
+                },
+                error: (xhr, status, error) => {
+                    console.error("[v0] Error deleting mapping:", error);
+                    alert('✗ خطا در ارتباط با سرور');
+                    $btn.attr('disabled', false);
                 }
             });
         }

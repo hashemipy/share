@@ -302,6 +302,8 @@ class Inventory_Sync_Admin {
             wp_send_json_error('رسائی نہیں');
         }
         
+        error_log('[v0] Loading Site1 products...');
+        
         $site1_products = wc_get_products(['limit' => 500, 'status' => 'publish']);
         $site2_products = [];
         
@@ -312,17 +314,39 @@ class Inventory_Sync_Admin {
                 Inventory_Sync_Settings::get_site2_key(),
                 Inventory_Sync_Settings::get_site2_secret()
             );
-            $site2_products = $api->get_products(500) ?: [];
+            error_log('[v0] Loading Site2 products from API...');
+            
+            $response = $api->get_products(500);
+            error_log('[v0] Site2 API response: ' . json_encode($response));
+            
+            if (is_array($response) && !isset($response['code'])) {
+                // فرمت‌کردن داده‌های سایت 2
+                $site2_products = array_map(function($p) {
+                    return [
+                        'id' => $p['id'] ?? null,
+                        'name' => $p['name'] ?? 'نامشخص',
+                        'sku' => $p['sku'] ?? ''
+                    ];
+                }, $response);
+            } else {
+                error_log('[v0] Site2 API Error: ' . json_encode($response));
+            }
         } catch (Exception $e) {
-            // API میں مسئلہ - خالی رہے گا
+            error_log('[v0] Site2 API Exception: ' . $e->getMessage());
         }
         
         $data = [
             'site1' => array_map(function($p) {
-                return ['id' => $p->get_id(), 'name' => $p->get_name(), 'sku' => $p->get_sku()];
+                return [
+                    'id' => $p->get_id(),
+                    'name' => $p->get_name(),
+                    'sku' => $p->get_sku() ?? ''
+                ];
             }, $site1_products),
             'site2' => $site2_products
         ];
+        
+        error_log('[v0] Final products data: Site1 count=' . count($data['site1']) . ', Site2 count=' . count($data['site2']));
         
         wp_send_json_success($data);
     }
