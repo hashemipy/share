@@ -302,19 +302,47 @@ class Inventory_Sync_Admin {
             wp_send_json_error('رسائی نہیں');
         }
         
+        // بررسی تنظیمات
+        $site1_url = Inventory_Sync_Settings::get_site1_url();
+        $site2_url = Inventory_Sync_Settings::get_site2_url();
+        $site2_key = Inventory_Sync_Settings::get_site2_key();
+        $site2_secret = Inventory_Sync_Settings::get_site2_secret();
+        
+        if (!$site2_url || !$site2_key || !$site2_secret) {
+            wp_send_json_error('تنظیمات سایت 2 کامل نیست. لطفا ابتدا تب تنظیمات را بررسی کنید.');
+        }
+        
         $site1_products = wc_get_products(['limit' => 500, 'status' => 'publish']);
         $site2_products = [];
+        $error_msg = '';
         
-        // اگر remote API ہے تو سائٹ 2 سے بھی حاصل کریں
+        // سائٹ 2 سے محصولات حاصل کریں
         try {
             $api = new Inventory_Sync_API(
-                Inventory_Sync_Settings::get_site2_url(),
-                Inventory_Sync_Settings::get_site2_key(),
-                Inventory_Sync_Settings::get_site2_secret()
+                $site2_url,
+                $site2_key,
+                $site2_secret
             );
-            $site2_products = $api->get_products(500) ?: [];
+            
+            $site2_data = $api->get_products(500);
+            
+            if (is_wp_error($site2_data)) {
+                $error_msg = 'خطا در دریافت محصولات سایت 2: ' . $site2_data->get_error_message();
+                error_log('[Inventory Sync] ' . $error_msg);
+                wp_send_json_error($error_msg);
+            }
+            
+            $site2_products = $site2_data ?: [];
+            
+            if (empty($site2_products)) {
+                error_log('[Inventory Sync] هیچ محصول برای سایت 2 دریافت نشد');
+                wp_send_json_error('محصولات سایت 2 دریافت نشد. API اتصال را تست کنید.');
+            }
+            
         } catch (Exception $e) {
-            // API میں مسئلہ - خالی رہے گا
+            $error_msg = 'استثنا در دریافت محصولات سایت 2: ' . $e->getMessage();
+            error_log('[Inventory Sync] ' . $error_msg);
+            wp_send_json_error($error_msg);
         }
         
         $data = [

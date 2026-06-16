@@ -190,12 +190,16 @@ if (!defined('ABSPATH')) exit;
             <!-- Add New Mapping Form -->
             <div style="background: #f9f9f9; padding: 20px; margin-bottom: 30px; border-radius: 4px;">
                 <h3>افزودن Mapping جدید</h3>
+                <div id="loading-indicator" style="display: none; text-align: center; padding: 20px; background: #fff3cd; border-radius: 4px; margin-bottom: 20px;">
+                    <strong>⏳ در حال بارگزاری محصولات...</strong>
+                    <p style="color: #666; margin-top: 10px;">این عمل ممکن است چند ثانیه طول بکشد</p>
+                </div>
                 <table style="width: 100%;">
                     <tr>
                         <td style="padding: 10px; vertical-align: top;">
                             <label style="display: block; margin-bottom: 5px;"><strong>محصول سایت 1:</strong></label>
                             <select id="site1-product-select" style="width: 100%; padding: 8px; border: 1px solid #ddd;">
-                                <option value="">انتخاب کنید...</option>
+                                <option value="">درحال بارگزاری...</option>
                             </select>
                             <small style="color: #999;">ID: <span id="site1-product-id">-</span> | SKU: <span id="site1-product-sku">-</span></small>
                         </td>
@@ -205,7 +209,7 @@ if (!defined('ABSPATH')) exit;
                         <td style="padding: 10px; vertical-align: top;">
                             <label style="display: block; margin-bottom: 5px;"><strong>محصول سایت 2:</strong></label>
                             <select id="site2-product-select" style="width: 100%; padding: 8px; border: 1px solid #ddd;">
-                                <option value="">انتخاب کنید...</option>
+                                <option value="">درحال بارگزاری...</option>
                             </select>
                             <small style="color: #999;">ID: <span id="site2-product-id">-</span> | SKU: <span id="site2-product-sku">-</span></small>
                         </td>

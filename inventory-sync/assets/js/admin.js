@@ -471,21 +471,45 @@
         
         // === Mapping Management ===
         loadProductSelects: function() {
+            // نمایش loading indicator
+            $('#loading-indicator').show();
+            
             $.ajax({
                 url: inventorySyncData.ajaxurl,
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_get_all_products',
-                    nonce: inventorySyncData.nonce
+                    _ajax_nonce: inventorySyncData.nonce
                 },
                 success: (response) => {
                     if (response.success && response.data) {
                         const site1 = response.data.site1 || [];
                         const site2 = response.data.site2 || [];
                         
+                        console.log('[v0] محصولات با موفقیت بارگزاری شدند. سایت1:', site1.length, 'سایت2:', site2.length);
+                        
                         this.populateSelect('#site1-product-select', site1);
                         this.populateSelect('#site2-product-select', site2);
+                        
+                        // پنهان کردن loading indicator
+                        $('#loading-indicator').hide();
+                    } else {
+                        console.error('[v0] پاسخ نامعتبر:', response);
+                        $('#loading-indicator').html('<span style="color: red;">خطا: پاسخ نامعتبر است</span>').show();
                     }
+                },
+                error: (xhr, status, error) => {
+                    console.error('[v0] خطا در بارگزاری محصولات:', error, xhr.responseText);
+                    const errorMsg = xhr.responseJSON?.data || 'خطا در بارگزاری محصولات. تنظیمات و اتصال API را بررسی کنید.';
+                    
+                    $('#loading-indicator').html(
+                        '<strong style="color: red;">❌ خطا:</strong> ' + errorMsg + 
+                        '<br><small style="color: #666; margin-top: 10px; display: block;">لطفا تب تنظیمات را بررسی کنید و اتصال API را تست کنید.</small>'
+                    ).show();
+                    
+                    // در صورت خطا، select ها را خالی کن
+                    this.populateSelect('#site1-product-select', []);
+                    this.populateSelect('#site2-product-select', []);
                 }
             });
         },
