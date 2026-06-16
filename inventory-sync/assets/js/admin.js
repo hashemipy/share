@@ -476,7 +476,7 @@
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_get_all_products',
-                    nonce: inventorySyncData.nonce
+                    _ajax_nonce: inventorySyncData.nonce
                 },
                 success: (response) => {
                     if (response.success && response.data) {
@@ -516,7 +516,7 @@
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_get_mappings',
-                    nonce: inventorySyncData.nonce
+                    _ajax_nonce: inventorySyncData.nonce
                 },
                 success: (response) => {
                     if (response.success) {
@@ -568,7 +568,7 @@
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_add_mapping',
-                    nonce: inventorySyncData.nonce,
+                    _ajax_nonce: inventorySyncData.nonce,
                     site1_product_id: site1,
                     site2_product_id: site2
                 },
@@ -591,7 +591,7 @@
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_sync_all_mappings',
-                    nonce: inventorySyncData.nonce
+                    _ajax_nonce: inventorySyncData.nonce
                 },
                 success: (response) => {
                     if (response.success) {
@@ -611,7 +611,7 @@
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_sync_mapping',
-                    nonce: inventorySyncData.nonce,
+                    _ajax_nonce: inventorySyncData.nonce,
                     mapping_id: id
                 },
                 success: (response) => {
@@ -633,7 +633,7 @@
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_toggle_mapping',
-                    nonce: inventorySyncData.nonce,
+                    _ajax_nonce: inventorySyncData.nonce,
                     mapping_id: id,
                     enabled: enabled ? 0 : 1
                 },
@@ -656,7 +656,7 @@
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_delete_mapping',
-                    nonce: inventorySyncData.nonce,
+                    _ajax_nonce: inventorySyncData.nonce,
                     mapping_id: id
                 },
                 success: (response) => {
