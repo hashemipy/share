@@ -55,14 +55,27 @@ class Inventory_Sync_Slave_Settings {
     }
     
     public static function render_page() {
-        ?>
-        <div class="wrap">
-            <h1>محصولات دریافت‌شده - سایت Slave</h1>
-            <div style="max-width: 1200px; margin-top: 20px;">
-                <?php require INVENTORY_SYNC_SLAVE_PATH . 'admin/dashboard-slave.php'; ?>
+        // بررسی وجود فایل dashboard
+        $dashboard_file = INVENTORY_SYNC_SLAVE_DIR . 'admin/dashboard-slave.php';
+        if (file_exists($dashboard_file)) {
+            ?>
+            <div class="wrap">
+                <h1>محصولات دریافت‌شده - سایت Slave</h1>
+                <div style="max-width: 1200px; margin-top: 20px;">
+                    <?php require $dashboard_file; ?>
+                </div>
             </div>
-        </div>
-        <?php
+            <?php
+        } else {
+            ?>
+            <div class="wrap">
+                <h1>محصولات دریافت‌شده - سایت Slave</h1>
+                <div class="notice notice-error">
+                    <p>⚠️ فایل dashboard پیدا نشد. لطفاً فایل‌های پلاگین را بررسی کنید.</p>
+                </div>
+            </div>
+            <?php
+        }
     }
     
     public static function render_settings() {

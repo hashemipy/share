@@ -6,8 +6,10 @@
 class Inventory_Sync_Master_Settings {
     
     public static function init() {
-        add_action('admin_menu', [__CLASS__, 'add_menu']);
-        add_action('admin_init', [__CLASS__, 'register_settings']);
+        if (is_admin()) {
+            add_action('admin_menu', [__CLASS__, 'add_menu']);
+            add_action('admin_init', [__CLASS__, 'register_settings']);
+        }
     }
     
     public static function add_menu() {
@@ -50,14 +52,27 @@ class Inventory_Sync_Master_Settings {
     }
     
     public static function render_page() {
-        ?>
-        <div class="wrap">
-            <h1>هماهنگ‌سازی انبار - سایت Master</h1>
-            <div style="max-width: 1200px; margin-top: 20px;">
-                <?php require INVENTORY_SYNC_MASTER_PATH . 'admin/dashboard-master.php'; ?>
+        // بررسی وجود فایل dashboard
+        $dashboard_file = INVENTORY_SYNC_MASTER_DIR . 'admin/dashboard-master.php';
+        if (file_exists($dashboard_file)) {
+            ?>
+            <div class="wrap">
+                <h1>هماهنگ‌سازی انبار - سایت Master</h1>
+                <div style="max-width: 1200px; margin-top: 20px;">
+                    <?php require $dashboard_file; ?>
+                </div>
             </div>
-        </div>
-        <?php
+            <?php
+        } else {
+            ?>
+            <div class="wrap">
+                <h1>هماهنگ‌سازی انبار - سایت Master</h1>
+                <div class="notice notice-error">
+                    <p>⚠️ فایل dashboard پیدا نشد. لطفاً فایل‌های پلاگین را بررسی کنید.</p>
+                </div>
+            </div>
+            <?php
+        }
     }
     
     public static function render_settings() {
