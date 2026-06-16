@@ -2,7 +2,7 @@
 if (!defined('ABSPATH')) exit;
 ?>
 
-<div class="wrap inventory-sync-wrap">
+<div class="wrap inventory-sync-wrap <?php echo Inventory_Sync_Settings::is_site_2() ? 'inventory-sync-site-2' : 'inventory-sync-site-1'; ?>">
     <h1><?php esc_html_e('Inventory Sync - هماهنگ‌سازی موجودی', 'inventory-sync'); ?></h1>
     
     <!-- Quick Help Notice -->
@@ -38,6 +38,40 @@ if (!defined('ABSPATH')) exit;
         <div id="settings" class="tab-pane active">
             <div class="settings-container">
                 <h2><?php esc_html_e('تنظیمات سایت‌ها', 'inventory-sync'); ?></h2>
+                
+                <!-- Current Site Info -->
+                <div style="background: #e8f4f8; border: 1px solid #4caf50; border-radius: 5px; padding: 15px; margin-bottom: 20px;">
+                    <strong style="color: #2e7d32;">موجودہ سائٹ:</strong>
+                    <div style="margin-top: 10px; font-size: 14px;">
+                        <p>
+                            یہ سائٹ ہے: 
+                            <strong>
+                                <?php 
+                                    $current_site = Inventory_Sync_Settings::get_current_site_type();
+                                    echo 'سایت ' . esc_html($current_site);
+                                ?>
+                            </strong>
+                        </p>
+                        <p style="font-size: 12px; color: #666; margin-top: 5px;">
+                            URL: <code><?php echo esc_html(home_url()); ?></code>
+                        </p>
+                        
+                        <?php if ($current_site === '2'): ?>
+                            <div style="margin-top: 10px; padding: 10px; background: #fff9c4; border-radius: 3px; border-left: 3px solid #ff9800;">
+                                <strong>⚠️ شما سائٹ 2 میں ہیں</strong>
+                                <p style="margin: 5px 0 0 0; font-size: 12px;">
+                                    محصولات کی ترتیب محدود ہے۔ محصولات کی ترتیب صرف سائٹ 1 میں کی جا سکتی ہے۔
+                                </p>
+                                <label style="display: flex; align-items: center; margin-top: 10px; font-size: 12px;">
+                                    <input type="checkbox" id="sync_to_site1" class="form-control" 
+                                           <?php checked(Inventory_Sync_Settings::should_sync_to_site1()); ?>
+                                           style="width: auto; margin-right: 8px;">
+                                    موجودی کی تبدیلیوں کو سائٹ 1 میں منتقل کریں
+                                </label>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
                 
                 <div class="settings-grid">
                     <!-- Site 1 -->

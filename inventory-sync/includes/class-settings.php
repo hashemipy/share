@@ -44,8 +44,24 @@ class Inventory_Sync_Settings {
         return (bool) get_option(self::OPTION_PREFIX . 'auto_sync_enabled', false);
     }
     
-    public static function get_sync_interval() {
-        return get_option(self::OPTION_PREFIX . 'sync_interval', 300); // 5 minutes
+    public static function get_current_site_type() {
+        return get_option(self::OPTION_PREFIX . 'current_site_type', '1');
+    }
+    
+    public static function set_current_site_type($type) {
+        if (!in_array($type, ['1', '2'])) {
+            return false;
+        }
+        update_option(self::OPTION_PREFIX . 'current_site_type', $type);
+        return true;
+    }
+    
+    public static function is_site_2() {
+        return self::get_current_site_type() === '2';
+    }
+    
+    public static function should_sync_to_site1() {
+        return (bool) get_option(self::OPTION_PREFIX . 'sync_to_site1', false);
     }
     
     public static function save_settings($data) {

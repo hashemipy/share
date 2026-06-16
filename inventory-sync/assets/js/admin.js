@@ -37,6 +37,14 @@
         },
         
         loadInitialData: function() {
+            // Site 2 میں ہیں تو mapping form کو disable کریں
+            const isSite2 = document.body.classList.contains('inventory-sync-site-2');
+            
+            if (isSite2) {
+                $('#site1-product-select, #site2-product-select, #add-mapping-btn').prop('disabled', true);
+                $('.mapping-form-section').css('opacity', '0.6').css('pointer-events', 'none');
+            }
+            
             this.loadMappings();
             this.loadProductSelects();
             this.loadTransferProducts();
