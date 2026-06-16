@@ -474,6 +474,7 @@
         // === Mapping Management ===
         loadProductSelects: function() {
             if (!inventorySyncData || !inventorySyncData.ajaxurl) {
+                console.log('[v0] خرابی: inventorySyncData موجود نہیں');
                 return;
             }
             
@@ -486,13 +487,20 @@
                     nonce: inventorySyncData.nonce
                 },
                 success: function(response) {
+                    console.log('[v0] محصولات response:', response);
                     if (response.success && response.data) {
                         const site1 = response.data.site1 || [];
                         const site2 = response.data.site2 || [];
+                        console.log('[v0] سائٹ 1 محصولات:', site1.length, 'سائٹ 2:', site2.length);
                         
                         self.populateSelect('#site1-product-select', site1);
                         self.populateSelect('#site2-product-select', site2);
+                    } else {
+                        console.log('[v0] خرابی:', response.data);
                     }
+                },
+                error: function(xhr, status, error) {
+                    console.log('[v0] AJAX خرابی:', error, xhr.responseText);
                 }
             });
         },
@@ -502,10 +510,16 @@
                 products = [];
             }
             
-            let html = '<option value="">انتخاب کنید...</option>';
-            products.forEach(p => {
-                html += `<option value="${p.id}" data-sku="${p.sku || 'N/A'}">${p.name}</option>`;
-            });
+            let html = '<option value="">محصول منتخب کریں...</option>';
+            
+            if (products.length === 0) {
+                html += '<option value="" disabled>کوئی محصول دستیاب نہیں</option>';
+            } else {
+                products.forEach(p => {
+                    html += `<option value="${p.id}" data-sku="${p.sku || 'N/A'}">${p.name}</option>`;
+                });
+            }
+            
             $(selector).html(html);
         },
         

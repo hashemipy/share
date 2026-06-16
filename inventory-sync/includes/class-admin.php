@@ -303,20 +303,51 @@ class Inventory_Sync_Admin {
         }
         
         // سائٹ 1 - تمام محصولات (variable اور simple دونوں)
-        $site1_args = [
+        // پہلے simple products
+        $site1_products = [];
+        
+        $simple_args = [
             'limit' => 500,
             'status' => 'publish',
-            'type' => ['simple', 'variable']  // دونوں قسمیں
+            'type' => 'simple'
         ];
-        $site1_products = wc_get_products($site1_args);
+        $simple = wc_get_products($simple_args);
+        if ($simple && is_array($simple)) {
+            $site1_products = array_merge($site1_products, $simple);
+        }
+        
+        // پھر variable products
+        $variable_args = [
+            'limit' => 500,
+            'status' => 'publish',
+            'type' => 'variable'
+        ];
+        $variable = wc_get_products($variable_args);
+        if ($variable && is_array($variable)) {
+            $site1_products = array_merge($site1_products, $variable);
+        }
+        
+        // اگر کوئی محصول نہیں ملا تو سب published products لیں
+        if (empty($site1_products)) {
+            $fallback_args = [
+                'limit' => 500,
+                'status' => 'publish'
+            ];
+            $site1_products = wc_get_products($fallback_args);
+            if (!$site1_products) {
+                $site1_products = [];
+            }
+        }
         
         $site1_data = [];
         foreach ($site1_products as $p) {
-            $site1_data[] = [
-                'id' => $p->get_id(),
-                'name' => $p->get_name(),
-                'sku' => $p->get_sku() ?: 'N/A'
-            ];
+            if ($p && is_object($p)) {
+                $site1_data[] = [
+                    'id' => $p->get_id(),
+                    'name' => $p->get_name(),
+                    'sku' => $p->get_sku() ?: 'N/A'
+                ];
+            }
         }
         
         $site2_data = [];
@@ -353,7 +384,11 @@ class Inventory_Sync_Admin {
         
         $data = [
             'site1' => $site1_data,
-            'site2' => $site2_data
+            'site2' => $site2_data,
+            'debug' => [
+                'site1_count' => count($site1_data),
+                'site2_count' => count($site2_data)
+            ]
         ];
         
         wp_send_json_success($data);
