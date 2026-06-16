@@ -389,7 +389,7 @@
         renderTransferredProducts: function(products) {
             if (!products || products.length === 0) {
                 $('.transferred-list').html(
-                    '<tr><td colspan="8" class="text-center">📭 هیچ محصولی منتقل نشده است</td></tr>'
+                    '<tr><td colspan="8" class="text-center">��� هیچ محصولی منتقل نشده است</td></tr>'
                 );
                 return;
             }
@@ -481,6 +481,7 @@
         
         // === Mapping Management ===
         loadProductSelects: function() {
+            console.log("[v0] loadProductSelects شروع");
             $('#loading-message').show();
             
             $.ajax({
@@ -491,9 +492,13 @@
                     nonce: inventorySyncData.nonce
                 },
                 success: (response) => {
+                    console.log("[v0] success response:", response);
                     if (response.success && response.data) {
                         const site1 = response.data.site1 || [];
                         const site2 = response.data.site2 || [];
+                        
+                        console.log("[v0] site1 محصولات:", site1);
+                        console.log("[v0] site2 محصولات:", site2);
                         
                         this.populateSelect('#site1-product-select', site1);
                         this.populateSelect('#site2-product-select', site2);
@@ -501,10 +506,12 @@
                         if (site1.length === 0 || site2.length === 0) {
                             console.warn("هشدار: یکی از سایت‌ها محصول ندارد!");
                         }
+                    } else {
+                        console.error("[v0] پاسخ خالی یا نامعتبر است");
                     }
                 },
                 error: (xhr, status, error) => {
-                    console.error("خطا در دریافت محصولات:", error);
+                    console.error("[v0] AJAX خطا:", error, xhr.responseText);
                     $('#site1-product-select').html('<option value="">خطا: محصولات بارگذاری نشدند</option>');
                     $('#site2-product-select').html('<option value="">خطا: محصولات بارگذاری نشدند</option>');
                 },

@@ -305,70 +305,109 @@ class Inventory_Sync_Admin {
         $site1_products = [];
         $site2_products = [];
         
-        // سایت 1 محصولات - از API دریافت کریں
-        try {
-            $api_site1 = new Inventory_Sync_API(
-                Inventory_Sync_Settings::get_site1_url(),
-                Inventory_Sync_Settings::get_site1_key(),
-                Inventory_Sync_Settings::get_site1_secret()
-            );
-            $site1_raw = $api_site1->get_products(500);
-            
-            if (!is_wp_error($site1_raw) && is_array($site1_raw)) {
-                $site1_products = array_map(function($p) {
-                    if (is_array($p)) {
-                        return [
-                            'id' => isset($p['id']) ? $p['id'] : 0,
-                            'name' => isset($p['name']) ? $p['name'] : 'بدون نام',
-                            'sku' => isset($p['sku']) ? $p['sku'] : ''
-                        ];
-                    } else {
-                        return [
-                            'id' => isset($p->id) ? $p->id : 0,
-                            'name' => isset($p->name) ? $p->name : 'بدون نام',
-                            'sku' => isset($p->sku) ? $p->sku : ''
-                        ];
-                    }
-                }, $site1_raw);
+        error_log('[v0] ajax_get_all_products شروع');
+        
+        // سایت 1 محصولات - ابتدا از API دریافت کریں
+        $site1_url = Inventory_Sync_Settings::get_site1_url();
+        $site1_key = Inventory_Sync_Settings::get_site1_key();
+        $site1_secret = Inventory_Sync_Settings::get_site1_secret();
+        
+        error_log('[v0] سایت 1 تنظیمات: URL=' . $site1_url . ', Key=' . (strlen($site1_key) > 0 ? substr($site1_key, 0, 5) . '...' : 'EMPTY'));
+        
+        // اگر سایت 1 خود سایت محلی است، از محصولات محلی استفاده کنید
+        if (empty($site1_url) || empty($site1_key) || empty($site1_secret)) {
+            error_log('[v0] سایت 1 خالی است، از محصولات محلی استفاده می‌شود');
+            $local_products = wc_get_products(['limit' => 500, 'status' => 'publish']);
+            $site1_products = array_map(function($p) {
+                return [
+                    'id' => $p->get_id(),
+                    'name' => $p->get_name(),
+                    'sku' => $p->get_sku() ?: ''
+                ];
+            }, $local_products);
+        } else {
+            try {
+                $api_site1 = new Inventory_Sync_API($site1_url, $site1_key, $site1_secret);
+                $site1_raw = $api_site1->get_products(500);
+                
+                error_log('[v0] سایت 1 response type: ' . gettype($site1_raw));
+                
+                if (is_wp_error($site1_raw)) {
+                    error_log('[v0] سایت 1 WP_Error: ' . $site1_raw->get_error_message());
+                } elseif (is_array($site1_raw)) {
+                    error_log('[v0] سایت 1 آرایه موجود، تعداد: ' . count($site1_raw));
+                    $site1_products = array_map(function($p) {
+                        if (is_array($p)) {
+                            return [
+                                'id' => isset($p['id']) ? $p['id'] : 0,
+                                'name' => isset($p['name']) ? $p['name'] : 'بدون نام',
+                                'sku' => isset($p['sku']) ? $p['sku'] : ''
+                            ];
+                        } else {
+                            return [
+                                'id' => isset($p->id) ? $p->id : 0,
+                                'name' => isset($p->name) ? $p->name : 'بدون نام',
+                                'sku' => isset($p->sku) ? $p->sku : ''
+                            ];
+                        }
+                    }, $site1_raw);
+                } else {
+                    error_log('[v0] سایت 1 نه WP_Error نه آرایه: ' . var_export($site1_raw, true));
+                }
+            } catch (Exception $e) {
+                error_log('[v0] Exception سایت 1: ' . $e->getMessage());
             }
-        } catch (Exception $e) {
-            error_log('[Inventory Sync] خطا سایت 1: ' . $e->getMessage());
         }
         
         // سایت 2 محصولات - از API دریافت کریں
-        try {
-            $api_site2 = new Inventory_Sync_API(
-                Inventory_Sync_Settings::get_site2_url(),
-                Inventory_Sync_Settings::get_site2_key(),
-                Inventory_Sync_Settings::get_site2_secret()
-            );
-            $site2_raw = $api_site2->get_products(500);
-            
-            if (!is_wp_error($site2_raw) && is_array($site2_raw)) {
-                $site2_products = array_map(function($p) {
-                    if (is_array($p)) {
-                        return [
-                            'id' => isset($p['id']) ? $p['id'] : 0,
-                            'name' => isset($p['name']) ? $p['name'] : 'بدون نام',
-                            'sku' => isset($p['sku']) ? $p['sku'] : ''
-                        ];
-                    } else {
-                        return [
-                            'id' => isset($p->id) ? $p->id : 0,
-                            'name' => isset($p->name) ? $p->name : 'بدون نام',
-                            'sku' => isset($p->sku) ? $p->sku : ''
-                        ];
-                    }
-                }, $site2_raw);
+        $site2_url = Inventory_Sync_Settings::get_site2_url();
+        $site2_key = Inventory_Sync_Settings::get_site2_key();
+        $site2_secret = Inventory_Sync_Settings::get_site2_secret();
+        
+        error_log('[v0] سایت 2 تنظیمات: URL=' . $site2_url . ', Key=' . (strlen($site2_key) > 0 ? substr($site2_key, 0, 5) . '...' : 'EMPTY'));
+        
+        if (!empty($site2_url) && !empty($site2_key) && !empty($site2_secret)) {
+            try {
+                $api_site2 = new Inventory_Sync_API($site2_url, $site2_key, $site2_secret);
+                $site2_raw = $api_site2->get_products(500);
+                
+                error_log('[v0] سایت 2 response type: ' . gettype($site2_raw));
+                
+                if (is_wp_error($site2_raw)) {
+                    error_log('[v0] سایت 2 WP_Error: ' . $site2_raw->get_error_message());
+                } elseif (is_array($site2_raw)) {
+                    error_log('[v0] سایت 2 آرایه موجود، تعداد: ' . count($site2_raw));
+                    $site2_products = array_map(function($p) {
+                        if (is_array($p)) {
+                            return [
+                                'id' => isset($p['id']) ? $p['id'] : 0,
+                                'name' => isset($p['name']) ? $p['name'] : 'بدون نام',
+                                'sku' => isset($p['sku']) ? $p['sku'] : ''
+                            ];
+                        } else {
+                            return [
+                                'id' => isset($p->id) ? $p->id : 0,
+                                'name' => isset($p->name) ? $p->name : 'بدون نام',
+                                'sku' => isset($p->sku) ? $p->sku : ''
+                            ];
+                        }
+                    }, $site2_raw);
+                } else {
+                    error_log('[v0] سایت 2 نه WP_Error نه آرایه: ' . var_export($site2_raw, true));
+                }
+            } catch (Exception $e) {
+                error_log('[v0] Exception سایت 2: ' . $e->getMessage());
             }
-        } catch (Exception $e) {
-            error_log('[Inventory Sync] خطا سایت 2: ' . $e->getMessage());
+        } else {
+            error_log('[v0] سایت 2 تنظیمات ناقص هستند');
         }
         
         $data = [
             'site1' => $site1_products,
             'site2' => $site2_products
         ];
+        
+        error_log('[v0] نهایی response: ' . json_encode($data));
         
         wp_send_json_success($data);
     }
