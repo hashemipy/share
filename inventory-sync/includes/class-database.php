@@ -11,6 +11,8 @@ class Inventory_Sync_Database {
         $table3 = $wpdb->prefix . 'inventory_sync_category_mapping';
         $table4 = $wpdb->prefix . 'inventory_sync_attribute_mapping';
         $table5 = $wpdb->prefix . 'inventory_sync_products_transferred';
+        $table6 = $wpdb->prefix . 'inventory_sync_product_mapping';
+        $table7 = $wpdb->prefix . 'inventory_sync_queue';
         
         $sql1 = "CREATE TABLE IF NOT EXISTS $table1 (
             id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -92,12 +94,48 @@ class Inventory_Sync_Database {
             INDEX idx_status (transfer_status)
         ) $charset_collate;";
         
+        $sql6 = "CREATE TABLE IF NOT EXISTS $table6 (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            site1_product_id BIGINT(20) UNSIGNED NOT NULL,
+            site2_product_id BIGINT(20) UNSIGNED NOT NULL,
+            site1_variant_id BIGINT(20) UNSIGNED DEFAULT NULL,
+            site2_variant_id BIGINT(20) UNSIGNED DEFAULT NULL,
+            mapping_type ENUM('simple', 'variable') DEFAULT 'simple',
+            sync_enabled BOOLEAN DEFAULT 1,
+            last_sync_time DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY unique_mapping (site1_product_id, site2_product_id, site1_variant_id, site2_variant_id),
+            INDEX idx_site1 (site1_product_id),
+            INDEX idx_site2 (site2_product_id),
+            INDEX idx_sync_enabled (sync_enabled),
+            INDEX idx_created (created_at)
+        ) $charset_collate;";
+        
+        $sql7 = "CREATE TABLE IF NOT EXISTS $table7 (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            mapping_id BIGINT(20) UNSIGNED NOT NULL,
+            action VARCHAR(50) NOT NULL,
+            source_site TINYINT DEFAULT NULL,
+            new_quantity INT DEFAULT NULL,
+            status ENUM('pending', 'processing', 'completed', 'failed') DEFAULT 'pending',
+            error_message LONGTEXT,
+            retry_count INT DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_status (status),
+            INDEX idx_mapping (mapping_id),
+            INDEX idx_created (created_at)
+        ) $charset_collate;";
+        
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         dbDelta($sql1);
         dbDelta($sql2);
         dbDelta($sql3);
         dbDelta($sql4);
         dbDelta($sql5);
+        dbDelta($sql6);
+        dbDelta($sql7);
     }
     
     public static function insert_log($product_id, $product_name, $action, $source_site, $target_site, $old_value, $new_value, $status, $error = '') {

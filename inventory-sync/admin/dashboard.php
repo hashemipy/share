@@ -28,6 +28,15 @@ if (!defined('ABSPATH')) exit;
         <a href="#logs" class="nav-tab" data-tab="logs">
             <?php esc_html_e('📋 لاگ‌ها', 'inventory-sync'); ?>
         </a>
+        <a href="#product-linking" class="nav-tab" data-tab="product-linking">
+            <?php esc_html_e('🔗 مرتبط‌سازی محصولات', 'inventory-sync'); ?>
+        </a>
+        <a href="#linked-products" class="nav-tab" data-tab="linked-products">
+            <?php esc_html_e('📦 محصولات مرتبط‌شده', 'inventory-sync'); ?>
+        </a>
+        <a href="#inventory-logs" class="nav-tab" data-tab="inventory-logs">
+            <?php esc_html_e('📊 لاگ‌های موجودی', 'inventory-sync'); ?>
+        </a>
     </nav>
     
     <!-- Tab Content -->
@@ -230,150 +239,139 @@ if (!defined('ABSPATH')) exit;
                         <div class="progress-fill"></div>
                     </div>
                     <p class="progress-text"></p>
-                </div>
-            </div>
         </div>
         
-        <!-- Transferred Products Tab -->
-        <div id="transferred" class="tab-pane">
-            <h2><?php esc_html_e('محصولات منتقل‌شده', 'inventory-sync'); ?></h2>
+        <!-- Product Linking Tab -->
+        <div id="product-linking" class="tab-pane">
+            <h2><?php esc_html_e('مرتبط‌سازی محصولات', 'inventory-sync'); ?></h2>
             <p class="description">
-                <?php esc_html_e('محصولاتی که با موفقیت از سایت 1 به سایت 2 منتقل شده‌اند، با علامت ✅ مشخص می‌شوند', 'inventory-sync'); ?>
+                <?php esc_html_e('دو محصول را برای هماهنگ‌سازی موجودی خودکار انتخاب کنید', 'inventory-sync'); ?>
             </p>
             
-            <div class="transferred-container">
-                <div class="transferred-filters">
-                    <input type="text" id="transferred-search" class="form-control" 
-                           placeholder="<?php esc_html_e('جستجو نام محصول...', 'inventory-sync'); ?>" 
-                           style="max-width: 300px;">
+            <div class="product-linking-container">
+                <div class="linking-column">
+                    <h3><?php esc_html_e('سایت 1 - محصول', 'inventory-sync'); ?></h3>
+                    <div class="search-group">
+                        <input type="text" class="product-search" id="site1_product_search" 
+                               placeholder="<?php esc_attr_e('جستجو محصول سایت 1...', 'inventory-sync'); ?>">
+                        <div class="products-dropdown site1-products-list" style="display: none;"></div>
+                    </div>
+                    <div class="selected-product site1-selected"></div>
                 </div>
                 
-                <table class="widefat striped">
-                    <thead>
-                        <tr>
-                            <th><?php esc_html_e('وضعیت', 'inventory-sync'); ?></th>
-                            <th><?php esc_html_e('نام محصول', 'inventory-sync'); ?></th>
-                            <th><?php esc_html_e('شناسه سایت 1', 'inventory-sync'); ?></th>
-                            <th><?php esc_html_e('شناسه سایت 2', 'inventory-sync'); ?></th>
-                            <th><?php esc_html_e('دسته‌بندی', 'inventory-sync'); ?></th>
-                            <th><?php esc_html_e('ویژگی‌ها', 'inventory-sync'); ?></th>
-                            <th><?php esc_html_e('تاریخ انتقال', 'inventory-sync'); ?></th>
-                            <th><?php esc_html_e('عملیات', 'inventory-sync'); ?></th>
-                        </tr>
-                    </thead>
-                    <tbody class="transferred-list">
-                        <tr>
-                            <td colspan="8" class="text-center">
-                                <?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+                <div class="linking-column">
+                    <h3><?php esc_html_e('سایت 2 - محصول', 'inventory-sync'); ?></h3>
+                    <div class="search-group">
+                        <input type="text" class="product-search" id="site2_product_search" 
+                               placeholder="<?php esc_attr_e('جستجو محصول سایت 2...', 'inventory-sync'); ?>">
+                        <div class="products-dropdown site2-products-list" style="display: none;"></div>
+                    </div>
+                    <div class="selected-product site2-selected"></div>
+                </div>
+            </div>
+            
+            <div class="linking-actions">
+                <button class="button button-primary" id="create-mapping-btn" disabled>
+                    <?php esc_html_e('🔗 ایجاد ارتباط', 'inventory-sync'); ?>
+                </button>
             </div>
         </div>
         
-        <!-- Logs Tab -->
-        <div id="logs" class="tab-pane">
-            <h2><?php esc_html_e('لاگ‌های هماهنگ‌سازی', 'inventory-sync'); ?></h2>
+        <!-- Linked Products Tab -->
+        <div id="linked-products" class="tab-pane">
+            <h2><?php esc_html_e('محصولات مرتبط‌شده', 'inventory-sync'); ?></h2>
+            <p class="description">
+                <?php esc_html_e('تمام ارتباطات موجود و مدیریت آن‌ها', 'inventory-sync'); ?>
+            </p>
             
-            <div class="logs-container">
-                <table class="widefat striped">
-                    <thead>
-                        <tr>
-                            <th><?php esc_html_e('تاریخ', 'inventory-sync'); ?></th>
-                            <th><?php esc_html_e('محصول', 'inventory-sync'); ?></th>
-                            <th><?php esc_html_e('عملیات', 'inventory-sync'); ?></th>
-                            <th><?php esc_html_e('از سایت', 'inventory-sync'); ?></th>
-                            <th><?php esc_html_e('به سایت', 'inventory-sync'); ?></th>
-                            <th><?php esc_html_e('وضعیت', 'inventory-sync'); ?></th>
-                            <th><?php esc_html_e('پیام', 'inventory-sync'); ?></th>
-                        </tr>
-                    </thead>
-                    <tbody class="logs-list">
-                        <tr>
-                            <td colspan="7" class="text-center">
-                                <?php esc_html_e('درحال بارگذاری لاگ‌ها...', 'inventory-sync'); ?>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div class="linked-products-toolbar">
+                <span class="queue-status">
+                    <?php esc_html_e('وظایف در انتظار: ', 'inventory-sync'); ?><strong id="pending-count">0</strong>
+                </span>
+                <button class="button" id="refresh-mappings-btn">
+                    <?php esc_html_e('🔄 بازخوانی', 'inventory-sync'); ?>
+                </button>
+            </div>
+            
+            <table class="wp-list-table widefat striped linked-products-table">
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e('محصول سایت 1', 'inventory-sync'); ?></th>
+                        <th><?php esc_html_e('موجودی', 'inventory-sync'); ?></th>
+                        <th style="text-align: center;">↔</th>
+                        <th><?php esc_html_e('محصول سایت 2', 'inventory-sync'); ?></th>
+                        <th><?php esc_html_e('موجودی', 'inventory-sync'); ?></th>
+                        <th><?php esc_html_e('وضعیت', 'inventory-sync'); ?></th>
+                        <th><?php esc_html_e('عملیات', 'inventory-sync'); ?></th>
+                    </tr>
+                </thead>
+                <tbody id="linked-products-tbody">
+                    <tr><td colspan="7" style="text-align: center;">{{ esc_html_e('بارگذاری...', 'inventory-sync'); }}</td></tr>
+                </tbody>
+            </table>
+            
+            <div class="pagination-wrapper">
+                <span class="pagination-info" id="pagination-info"></span>
+                <div class="pagination-buttons">
+                    <button class="button" id="prev-page-btn" disabled><?php esc_html_e('← قبلی', 'inventory-sync'); ?></button>
+                    <button class="button" id="next-page-btn"><?php esc_html_e('بعدی →', 'inventory-sync'); ?></button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Inventory Logs Tab -->
+        <div id="inventory-logs" class="tab-pane">
+            <h2><?php esc_html_e('لاگ‌های موجودی', 'inventory-sync'); ?></h2>
+            <p class="description">
+                <?php esc_html_e('تغییرات موجودی و وضعیت هماهنگ‌سازی', 'inventory-sync'); ?>
+            </p>
+            
+            <div class="logs-toolbar">
+                <select id="logs-status-filter" class="form-control">
+                    <option value="">{{ esc_html_e('تمام وضعیت‌ها', 'inventory-sync'); }}</option>
+                    <option value="pending">{{ esc_html_e('در انتظار', 'inventory-sync'); }}</option>
+                    <option value="success">{{ esc_html_e('موفق', 'inventory-sync'); }}</option>
+                    <option value="failed">{{ esc_html_e('ناموفق', 'inventory-sync'); }}</option>
+                </select>
+                
+                <select id="logs-site-filter" class="form-control">
+                    <option value="">{{ esc_html_e('تمام سایت‌ها', 'inventory-sync'); }}</option>
+                    <option value="1">{{ esc_html_e('سایت 1', 'inventory-sync'); }}</option>
+                    <option value="2">{{ esc_html_e('سایت 2', 'inventory-sync'); }}</option>
+                </select>
+                
+                <button class="button" id="refresh-logs-btn">
+                    <?php esc_html_e('🔄 بازخوانی', 'inventory-sync'); ?>
+                </button>
+            </div>
+            
+            <table class="wp-list-table widefat striped logs-table">
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e('نام محصول', 'inventory-sync'); ?></th>
+                        <th><?php esc_html_e('متغیر', 'inventory-sync'); ?></th>
+                        <th><?php esc_html_e('سایت', 'inventory-sync'); ?></th>
+                        <th><?php esc_html_e('موجودی قبل', 'inventory-sync'); ?></th>
+                        <th><?php esc_html_e('موجودی بعد', 'inventory-sync'); ?></th>
+                        <th><?php esc_html_e('وضعیت', 'inventory-sync'); ?></th>
+                        <th><?php esc_html_e('زمان', 'inventory-sync'); ?></th>
+                        <th><?php esc_html_e('عملیات', 'inventory-sync'); ?></th>
+                    </tr>
+                </thead>
+                <tbody id="logs-tbody">
+                    <tr><td colspan="8" style="text-align: center;">{{ esc_html_e('بارگذاری...', 'inventory-sync'); }}</td></tr>
+                </tbody>
+            </table>
+            
+            <div class="pagination-wrapper">
+                <span class="pagination-info" id="logs-pagination-info"></span>
+                <div class="pagination-buttons">
+                    <button class="button" id="logs-prev-page-btn" disabled><?php esc_html_e('← قبلی', 'inventory-sync'); ?></button>
+                    <button class="button" id="logs-next-page-btn"><?php esc_html_e('بعدی →', 'inventory-sync'); ?></button>
+                </div>
             </div>
         </div>
     </div>
-</div>
-
-<!-- MODAL: Help Dialogs -->
-<div id="help-modal" class="inventory-sync-modal" style="display: none;">
-    <div class="modal-content">
-        <button class="modal-close">&times;</button>
-        <div class="modal-body"></div>
-    </div>
-</div>
-
-<!-- HELP CONTENT: Hidden content for modals -->
-<div class="help-content" style="display: none;">
-    
-    <!-- Settings Help -->
-    <div id="help-site1-name" class="help-item">
-        <h3>نام سایت شماره 1</h3>
-        <p>یک نام شناسایی برای سایت اول انتخاب کنید تا بتوانید آن را شناخت کنید.</p>
-        <p><strong>مثال:</strong> "فروشگاه اصلی" یا "انبار اصلی"</p>
-    </div>
-    
-    <div id="help-site1-url" class="help-item">
-        <h3>آدرس سایت شماره 1</h3>
-        <p>آدرس کامل و دقیق سایت WooCommerce را وارد کنید.</p>
-        <p><strong>مثال:</strong> https://example.com</p>
-        <p><strong>نکته:</strong> حتما https:// یا http:// را بگنجانید</p>
-    </div>
-    
-    <div id="help-site1-key" class="help-item">
-        <h3>API Key سایت شماره 1</h3>
-        <p><strong>چطور به دست بیاورم؟</strong></p>
-        <ol>
-            <li>وارد داشبورد WooCommerce سایت 1 شوید</li>
-            <li>برو به: WooCommerce > Settings</li>
-            <li>تب Advanced را کلیک کنید</li>
-            <li>API کلیک کنید</li>
-            <li>Create an API Key کلیک کنید</li>
-            <li>"Consumer Key" را کپی کنید و اینجا بگذارید</li>
-        </ol>
-        <p><strong>⚠️ هشدار:</strong> این کلید را با کسی به اشتراک نگذارید!</p>
-    </div>
-    
-    <div id="help-site1-secret" class="help-item">
-        <h3>API Secret سایت شماره 1</h3>
-        <p><strong>چطور به دست بیاورم؟</strong></p>
-        <ol>
-            <li>همان مراحل بالا را دنبال کنید</li>
-            <li>"Consumer Secret" را کپی کنید</li>
-            <li>آن را اینجا بگذارید</li>
-        </ol>
-        <p><strong>💡 نکته:</strong> API Key و Secret باید با هم معتبر باشند</p>
-    </div>
-    
-    <div id="help-sync-direction" class="help-item">
-        <h3>جهت هماهنگ‌سازی</h3>
-        <p>کدام سایت "مرجع" است؟</p>
-        <ul>
-            <li><strong>سایت 1 ← سایت 2:</strong> موجودی سایت 1 مرجع است، موجودی سایت 2 به روز می‌شود</li>
-            <li><strong>سایت 2 ← سایت 1:</strong> موجودی سایت 2 مرجع است، موجودی سایت 1 به روز می‌شود</li>
-            <li><strong>دوطرفه:</strong> موجودی کم‌تر از دو سایت برای هر دو اعمال می‌شود</li>
-        </ul>
-        <p><strong>مثال:</strong> اگر سایت 1 مرجع است و 10 عدد محصول دارد، سایت 2 هم 10 عدد می‌شود</p>
-    </div>
-    
-    <div id="help-auto-sync" class="help-item">
-        <h3>هماهنگ‌سازی خودکار</h3>
-        <p>اگر این گزینه <strong>فعال</strong> باشد:</p>
-        <ul>
-            <li>هر زمان که سفارش ثبت شود، موجودی خودکار به‌روز می‌شود</li>
-            <li>سیستم هر 5 دقیقه موجودی‌ها را چک می‌کند</li>
-            <li>اگر نقصی پیدا شود، دوباره تلاش می‌کند</li>
-        </ul>
-        <p><strong>💡 توصیه:</strong> برای سفارش‌های زیاد، این گزینه را فعال کنید</p>
-    </div>
-    
 </div>
 
 <script>

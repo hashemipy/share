@@ -62,6 +62,31 @@ register_activation_hook(__FILE__, function () {
 
 // Deactivation Hook
 register_deactivation_hook(__FILE__, function () {
-    wp_clear_scheduled_hook('inventory_sync_cron_hook');
+    wp_clear_scheduled_hook('inventory_sync_process_queue');
+    wp_clear_scheduled_hook('inventory_sync_cleanup');
     flush_rewrite_rules();
+});
+
+// ثبت Cron Jobs
+add_action('wp_loaded', function () {
+    // پردازش صف هر 5 دقیقه
+    if (!wp_next_scheduled('inventory_sync_process_queue')) {
+        wp_schedule_event(time(), 'five_minutes', 'inventory_sync_process_queue');
+    }
+    
+    // پاکیزه کردن داده‌های قدیمی روزانه
+    if (!wp_next_scheduled('inventory_sync_cleanup')) {
+        wp_schedule_event(time(), 'daily', 'inventory_sync_cleanup');
+    }
+});
+
+// اضافه کردن بازه زمانی 5 دقیقه
+add_filter('cron_schedules', function ($schedules) {
+    if (!isset($schedules['five_minutes'])) {
+        $schedules['five_minutes'] = array(
+            'interval' => 5 * 60, // 5 دقیقه
+            'display'  => esc_html__('هر 5 دقیقه', 'inventory-sync')
+        );
+    }
+    return $schedules;
 });
