@@ -78,7 +78,7 @@
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_test_connection',
-                    _ajax_nonce: inventorySyncData.nonce,
+                    nonce: inventorySyncData.nonce,
                     site: site
                 },
                 success: (response) => {
@@ -115,7 +115,7 @@
             
             const data = {
                 action: 'inventory_sync_save_settings',
-                _ajax_nonce: inventorySyncData.nonce,
+                nonce: inventorySyncData.nonce,
                 site1_name: $('#site1_name').val(),
                 site1_url: $('#site1_url').val(),
                 site1_key: $('#site1_key').val(),
@@ -164,7 +164,7 @@
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_get_products',
-                    _ajax_nonce: inventorySyncData.nonce,
+                    nonce: inventorySyncData.nonce,
                     site: site,
                     page: 1
                 },
@@ -232,7 +232,7 @@
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_get_products',
-                    _ajax_nonce: inventorySyncData.nonce,
+                    nonce: inventorySyncData.nonce,
                     site: 'site1',
                     page: 1
                 },
@@ -328,7 +328,7 @@
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_transfer_products',
-                    _ajax_nonce: inventorySyncData.nonce,
+                    nonce: inventorySyncData.nonce,
                     product_ids: productIds
                 },
                 success: (response) => {
@@ -359,7 +359,7 @@
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_get_transferred_products',
-                    _ajax_nonce: inventorySyncData.nonce,
+                    nonce: inventorySyncData.nonce,
                     page: 1
                 },
                 success: (response) => {
@@ -421,7 +421,7 @@
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_get_logs',
-                    _ajax_nonce: inventorySyncData.nonce,
+                    nonce: inventorySyncData.nonce,
                     page: 1
                 },
                 success: (response) => {
@@ -479,13 +479,22 @@
                     nonce: inventorySyncData.nonce
                 },
                 success: (response) => {
+                    console.log("[v0] Response from AJAX:", response);
                     if (response.success && response.data) {
                         const site1 = response.data.site1 || [];
                         const site2 = response.data.site2 || [];
                         
+                        console.log("[v0] Site1 products:", site1);
+                        console.log("[v0] Site2 products:", site2);
+                        
                         this.populateSelect('#site1-product-select', site1);
                         this.populateSelect('#site2-product-select', site2);
+                    } else {
+                        console.log("[v0] Response failed or no data");
                     }
+                },
+                error: (xhr, status, error) => {
+                    console.log("[v0] AJAX Error:", error, xhr.responseText);
                 }
             });
         },
