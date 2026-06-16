@@ -184,20 +184,38 @@ if (!defined('ABSPATH')) exit;
         <div id="mapping" class="tab-pane">
             <h2><?php esc_html_e('مرتبط‌سازی محصولات', 'inventory-sync'); ?></h2>
             <p class="description">
-                <?php esc_html_e('محصولات سایت 1 و 2 را در کنار هم ببینید و آنها را مرتبط کنید', 'inventory-sync'); ?>
+                <?php esc_html_e('محصولات سایت 1 و 2 را انتخاب کنید و آنها را مرتبط کنید', 'inventory-sync'); ?>
             </p>
             
-            <div class="mapping-container">
-                <div class="mapping-column">
-                    <h3><?php esc_html_e('سایت 1 - محصولات', 'inventory-sync'); ?></h3>
-                    <div class="products-list site1-products">
-                        <p><?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?></p>
+            <div class="mapping-wrapper">
+                <div class="mapping-container">
+                    <div class="mapping-column">
+                        <h3><?php esc_html_e('سایت 1 - محصولات', 'inventory-sync'); ?></h3>
+                        <input type="text" class="mapping-search site1-search" placeholder="<?php esc_html_e('جستجو...', 'inventory-sync'); ?>">
+                        <div class="products-list site1-products">
+                            <p><?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?></p>
+                        </div>
+                    </div>
+                    
+                    <div class="mapping-actions-vertical">
+                        <button class="button button-primary add-mapping-btn" disabled>
+                            <?php esc_html_e('🔗 اتصال', 'inventory-sync'); ?>
+                        </button>
+                        <p class="mapping-status-text"></p>
+                    </div>
+                    
+                    <div class="mapping-column">
+                        <h3><?php esc_html_e('سایت 2 - محصولات', 'inventory-sync'); ?></h3>
+                        <input type="text" class="mapping-search site2-search" placeholder="<?php esc_html_e('جستجو...', 'inventory-sync'); ?>">
+                        <div class="products-list site2-products">
+                            <p><?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?></p>
+                        </div>
                     </div>
                 </div>
                 
-                <div class="mapping-column">
-                    <h3><?php esc_html_e('سایت 2 - محصولات', 'inventory-sync'); ?></h3>
-                    <div class="products-list site2-products">
+                <div class="existing-mappings">
+                    <h3><?php esc_html_e('مرتبط‌سازی‌های موجود', 'inventory-sync'); ?></h3>
+                    <div class="mappings-list">
                         <p><?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?></p>
                     </div>
                 </div>

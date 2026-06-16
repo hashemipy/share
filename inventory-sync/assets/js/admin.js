@@ -22,6 +22,9 @@
             // Mapping
             $(document).on('click', '.sync-all-btn', this.syncAllInventory.bind(this));
             $(document).on('click', '.product-item', this.selectProduct.bind(this));
+            $(document).on('click', '.add-mapping-btn', this.addMapping.bind(this));
+            $(document).on('click', '.delete-mapping-btn', this.deleteMapping.bind(this));
+            $(document).on('keyup', '.mapping-search', this.searchProducts.bind(this));
             
             // Transfer
             $(document).on('click', '#select-all-transfer', this.toggleSelectAll.bind(this));
@@ -33,6 +36,7 @@
         loadInitialData: function() {
             this.loadProducts('site1');
             this.loadProducts('site2');
+            this.loadExistingMappings();
             this.loadTransferProducts();
             this.loadTransferredProducts();
             this.loadLogs();
@@ -194,7 +198,180 @@
         },
         
         selectProduct: function(e) {
-            $(e.target).closest('.product-item').toggleClass('selected');
+            const $item = $(e.currentTarget).closest('.product-item');
+            
+            // اگر کلیک روی دکمه حذف باشد، نریز
+            if ($(e.target).hasClass('delete-mapping-btn')) {
+                return;
+            }
+            
+            $item.toggleClass('selected');
+            this.updateMappingButtonState();
+        },
+        
+        updateMappingButtonState: function() {
+            const site1Selected = $('.site1-products .product-item.selected').length > 0;
+            const site2Selected = $('.site2-products .product-item.selected').length > 0;
+            
+            if (site1Selected && site2Selected) {
+                $('.add-mapping-btn').attr('disabled', false);
+                const site1Name = $('.site1-products .product-item.selected .product-name').text();
+                const site2Name = $('.site2-products .product-item.selected .product-name').text();
+                $('.mapping-status-text').text(`انتخاب شده: "${site1Name}" → "${site2Name}"`);
+            } else {
+                $('.add-mapping-btn').attr('disabled', true);
+                $('.mapping-status-text').text('');
+            }
+        },
+        
+        addMapping: function(e) {
+            e.preventDefault();
+            
+            const site1Item = $('.site1-products .product-item.selected');
+            const site2Item = $('.site2-products .product-item.selected');
+            
+            if (!site1Item.length || !site2Item.length) {
+                alert(inventorySyncData.i18n.selectProducts);
+                return;
+            }
+            
+            const site1Id = site1Item.attr('data-id');
+            const site1Sku = site1Item.find('.product-sku').text().replace('SKU: ', '');
+            const site2Id = site2Item.attr('data-id');
+            const site2Sku = site2Item.find('.product-sku').text().replace('SKU: ', '');
+            
+            const $btn = $(e.target);
+            const originalText = $btn.text();
+            $btn.attr('disabled', true).text(inventorySyncData.i18n.saving);
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_save_mapping',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    site1_id: site1Id,
+                    site1_sku: site1Sku,
+                    site2_id: site2Id,
+                    site2_sku: site2Sku
+                },
+                success: (response) => {
+                    if (response.success) {
+                        alert('✓ ' + response.data);
+                        site1Item.removeClass('selected');
+                        site2Item.removeClass('selected');
+                        this.loadExistingMappings();
+                        this.updateMappingButtonState();
+                    } else {
+                        alert('✗ ' + response.data);
+                    }
+                },
+                error: () => {
+                    alert('✗ ' + inventorySyncData.i18n.error);
+                },
+                complete: () => {
+                    $btn.attr('disabled', false).text(originalText);
+                }
+            });
+        },
+        
+        deleteMapping: function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            if (!confirm('آیا می‌خواهید این مرتبط‌سازی را حذف کنید؟')) {
+                return;
+            }
+            
+            const mappingId = $(e.currentTarget).attr('data-mapping-id');
+            const $btn = $(e.currentTarget);
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_delete_mapping',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    mapping_id: mappingId
+                },
+                success: (response) => {
+                    if (response.success) {
+                        $btn.closest('.mapping-item').fadeOut(300, function() {
+                            $(this).remove();
+                        });
+                    } else {
+                        alert('✗ ' + response.data);
+                    }
+                },
+                error: () => {
+                    alert('✗ ' + inventorySyncData.i18n.error);
+                }
+            });
+        },
+        
+        loadExistingMappings: function() {
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_get_mappings',
+                    _ajax_nonce: inventorySyncData.nonce
+                },
+                success: (response) => {
+                    if (response.success) {
+                        this.renderExistingMappings(response.data);
+                    }
+                },
+                error: () => {
+                    $('.mappings-list').html('<p class="alert alert-error">' + inventorySyncData.i18n.error + '</p>');
+                }
+            });
+        },
+        
+        renderExistingMappings: function(mappings) {
+            if (!mappings || mappings.length === 0) {
+                $('.mappings-list').html('<p>' + inventorySyncData.i18n.selectProducts + '</p>');
+                return;
+            }
+            
+            let html = '';
+            mappings.forEach(mapping => {
+                const syncStatus = mapping.sync_status === 'synced' ? '✓' : '⏳';
+                const lastSync = mapping.last_sync ? new Date(mapping.last_sync).toLocaleString('fa-IR') : '-';
+                
+                html += `
+                    <div class="mapping-item" data-mapping-id="${mapping.id}">
+                        <div class="mapping-info">
+                            <div class="mapping-products">
+                                <strong>${mapping.site1_product_name}</strong>
+                                <span class="mapping-arrow">←→</span>
+                                <strong>${mapping.site2_product_name}</strong>
+                            </div>
+                            <div class="mapping-meta">
+                                <span>${syncStatus} آخرین هماهنگ: ${lastSync}</span>
+                            </div>
+                        </div>
+                        <button class="button button-small delete-mapping-btn" data-mapping-id="${mapping.id}">
+                            🗑️
+                        </button>
+                    </div>
+                `;
+            });
+            
+            $('.mappings-list').html(html);
+        },
+        
+        searchProducts: function(e) {
+            const $input = $(e.target);
+            const searchText = $input.val().toLowerCase();
+            const isStie1 = $input.hasClass('site1-search');
+            const $container = isStie1 ? $('.site1-products') : $('.site2-products');
+            
+            $container.find('.product-item').each(function() {
+                const text = $(this).text().toLowerCase();
+                const matches = text.includes(searchText);
+                $(this).toggle(matches);
+            });
         },
         
         // === Inventory Sync ===
@@ -210,13 +387,28 @@
             
             $btn.attr('disabled', true).text(inventorySyncData.i18n.syncing);
             
-            // Here you would fetch all mappings and sync them
-            // For now, just show a message
-            
-            setTimeout(() => {
-                alert('✓ هماهنگ‌سازی کامل شد!');
-                $btn.attr('disabled', false).text(originalText);
-            }, 1000);
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_sync_all',
+                    _ajax_nonce: inventorySyncData.nonce
+                },
+                success: (response) => {
+                    if (response.success) {
+                        alert('✓ ' + response.data);
+                        this.loadExistingMappings();
+                    } else {
+                        alert('✗ ' + response.data);
+                    }
+                },
+                error: () => {
+                    alert('✗ ' + inventorySyncData.i18n.error);
+                },
+                complete: () => {
+                    $btn.attr('disabled', false).text(originalText);
+                }
+            });
         },
         
         // === Transfer Management ===
