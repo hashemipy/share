@@ -182,103 +182,42 @@ if (!defined('ABSPATH')) exit;
         
         <!-- Mapping Tab -->
         <div id="mapping" class="tab-pane">
-            <h2>🔗 مرتبط‌سازی محصولات</h2>
+            <h2>مرتبط‌سازی محصولات</h2>
             <p class="description">
-                محصولات سایت 1 و 2 را به هم متصل کنید تا موجودی‌های آنها خودکار هماهنگ شوند
+                محصولات سایت 1 و 2 را یکی کنید تا موجودی‌های آنها خودکار هماهنگ شوند
             </p>
             
-            <!-- Mapping Container -->
-            <div class="mapping-container" style="display: grid; gap: 20px;">
-                
-                <!-- Add New Mapping Section -->
-                <div class="mapping-form-section" style="background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                    <h3 style="margin-top: 0; margin-bottom: 20px; font-size: 16px; font-weight: 600;">📌 افزودن اتصال جدید</h3>
-                    
-                    <div class="mapping-form-grid" style="display: grid; grid-template-columns: 1fr auto 1fr auto; gap: 15px; align-items: flex-end;">
-                        
-                        <!-- Site 1 Product Select -->
-                        <div class="form-group">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; font-size: 13px;">محصول سایت 1</label>
-                            <select id="site1-product-select" style="width: 100%; padding: 10px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; background: #fff;">
-                                <option value="">-- انتخاب کنید --</option>
+            <!-- Add New Mapping Form -->
+            <div style="background: #f9f9f9; padding: 20px; margin-bottom: 30px; border-radius: 4px;">
+                <h3>افزودن Mapping جدید</h3>
+                <table style="width: 100%;">
+                    <tr>
+                        <td style="padding: 10px; vertical-align: top;">
+                            <label style="display: block; margin-bottom: 5px;"><strong>محصول سایت 1:</strong></label>
+                            <select id="site1-product-select" style="width: 100%; padding: 8px; border: 1px solid #ddd;">
+                                <option value="">انتخاب کنید...</option>
                             </select>
-                            <div id="site1-product-info" style="margin-top: 8px; padding: 8px; background: #f5f5f5; border-radius: 3px; font-size: 12px; display: none;">
-                                <div><strong>ID:</strong> <span id="site1-product-id">-</span></div>
-                                <div><strong>SKU:</strong> <span id="site1-product-sku">-</span></div>
-                            </div>
-                        </div>
-                        
-                        <!-- Arrow Icon -->
-                        <div style="font-size: 20px; text-align: center; color: #666; padding-bottom: 8px;">
-                            ↔
-                        </div>
-                        
-                        <!-- Site 2 Product Select -->
-                        <div class="form-group">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; font-size: 13px;">محصول سایت 2</label>
-                            <select id="site2-product-select" style="width: 100%; padding: 10px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; background: #fff;">
-                                <option value="">-- انتخاب کنید --</option>
+                            <small style="color: #999;">ID: <span id="site1-product-id">-</span> | SKU: <span id="site1-product-sku">-</span></small>
+                        </td>
+                        <td style="padding: 10px; vertical-align: top; text-align: center;">
+                            <p style="margin-top: 35px;">↔</p>
+                        </td>
+                        <td style="padding: 10px; vertical-align: top;">
+                            <label style="display: block; margin-bottom: 5px;"><strong>محصول سایت 2:</strong></label>
+                            <select id="site2-product-select" style="width: 100%; padding: 8px; border: 1px solid #ddd;">
+                                <option value="">انتخاب کنید...</option>
                             </select>
-                            <div id="site2-product-info" style="margin-top: 8px; padding: 8px; background: #f5f5f5; border-radius: 3px; font-size: 12px; display: none;">
-                                <div><strong>ID:</strong> <span id="site2-product-id">-</span></div>
-                                <div><strong>SKU:</strong> <span id="site2-product-sku">-</span></div>
-                            </div>
-                        </div>
-                        
-                        <!-- Add Button -->
-                        <button class="button button-primary" id="add-mapping-btn" style="padding: 10px 20px; font-weight: 600; white-space: nowrap; height: auto;">
-                            ➕ افزودن
-                        </button>
-                        
-                    </div>
-                    
-                    <!-- Error Message Area -->
-                    <div id="mapping-form-errors" style="margin-top: 15px; padding: 12px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; display: none; color: #856404; font-size: 13px;">
-                    </div>
-                </div>
-                
-                <!-- Existing Mappings Section -->
-                <div class="mappings-list-section" style="background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                        <h3 style="margin: 0; font-size: 16px; font-weight: 600;">📋 اتصالات موجود</h3>
-                        <div style="display: flex; gap: 10px;">
-                            <button class="button" id="refresh-mappings-btn" style="padding: 8px 16px; font-size: 13px;">
-                                🔄 تازه کنی
+                            <small style="color: #999;">ID: <span id="site2-product-id">-</span> | SKU: <span id="site2-product-sku">-</span></small>
+                        </td>
+                        <td style="padding: 10px; vertical-align: top;">
+                            <label style="display: block; margin-bottom: 5px;"><strong></strong></label>
+                            <button class="button button-primary" id="add-mapping-btn" style="width: 100%; padding: 8px;">
+                                ➕ افزودن Mapping
                             </button>
-                            <button class="button button-primary" id="sync-all-mappings-btn" style="padding: 8px 16px; font-size: 13px;">
-                                ⚡ هماهنگ کردن همه
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <!-- Mappings Table -->
-                    <div class="mappings-table-wrapper" style="overflow-x: auto;">
-                        <table class="widefat striped" id="mappings-table" style="width: 100%; border-collapse: collapse;">
-                            <thead>
-                                <tr style="background: #f5f5f5; border-bottom: 2px solid #ddd;">
-                                    <th style="padding: 12px; text-align: center; width: 50px; font-weight: 600;">وضعیت</th>
-                                    <th style="padding: 12px; width: 30%; font-weight: 600;">سایت 1</th>
-                                    <th style="padding: 12px; text-align: center; width: 70px; font-weight: 600;">موجودی</th>
-                                    <th style="padding: 12px; text-align: center; width: 30px;">↔</th>
-                                    <th style="padding: 12px; width: 30%; font-weight: 600;">سایت 2</th>
-                                    <th style="padding: 12px; text-align: center; width: 70px; font-weight: 600;">موجودی</th>
-                                    <th style="padding: 12px; text-align: center; width: 140px; font-weight: 600;">عملیات</th>
-                                </tr>
-                            </thead>
-                            <tbody class="mappings-list">
-                                <tr>
-                                    <td colspan="7" style="text-align: center; padding: 40px; color: #999;">
-                                        <span class="spinner" style="visibility: visible;"></span>
-                                        <br><span style="margin-top: 10px; display: block;">درحال بارگذاری اتصالات...</span>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                
+                        </td>
+                    </tr>
+                </table>
             </div>
-        </div>
             
             <!-- Existing Mappings -->
             <div style="margin-top: 20px;">
