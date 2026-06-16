@@ -18,10 +18,16 @@
             // Settings
             $(document).on('click', '.test-btn', this.testConnection.bind(this));
             $(document).on('click', '.save-settings-btn', this.saveSettings.bind(this));
+            $(document).on('change', '#current_site', this.saveCurrentSite.bind(this));
             
             // Mapping
+            $(document).on('click', '#create-mapping-btn', this.createMapping.bind(this));
+            $(document).on('change', '#mapping-site1-product', this.loadMappingProducts.bind(this, 'site1'));
+            $(document).on('change', '#mapping-site2-product', this.loadMappingProducts.bind(this, 'site2'));
             $(document).on('click', '.sync-all-btn', this.syncAllInventory.bind(this));
+            $(document).on('click', '.sync-mapping-btn', this.syncMapping.bind(this));
             $(document).on('click', '.product-item', this.selectProduct.bind(this));
+            $(document).on('click', '.delete-mapping-btn', this.deleteMapping.bind(this));
             
             // Transfer
             $(document).on('click', '#select-all-transfer', this.toggleSelectAll.bind(this));
@@ -31,8 +37,9 @@
         },
         
         loadInitialData: function() {
-            this.loadProducts('site1');
-            this.loadProducts('site2');
+            this.loadMappedProductsList();
+            this.loadMappingProductsDropdown('site1');
+            this.loadMappingProductsDropdown('site2');
             this.loadTransferProducts();
             this.loadTransferredProducts();
             this.loadLogs();
@@ -100,6 +107,27 @@
             });
         },
         
+        saveCurrentSite: function(e) {
+            const currentSite = $('#current_site').val();
+            const data = {
+                action: 'inventory_sync_save_settings',
+                _ajax_nonce: inventorySyncData.nonce,
+                current_site: currentSite,
+                site1_name: $('#site1_name').val(),
+                site1_url: $('#site1_url').val(),
+                site1_key: $('#site1_key').val(),
+                site1_secret: $('#site1_secret').val(),
+                site2_name: $('#site2_name').val(),
+                site2_url: $('#site2_url').val(),
+                site2_key: $('#site2_key').val(),
+                site2_secret: $('#site2_secret').val(),
+                sync_direction: $('#sync_direction').val(),
+                auto_sync_enabled: $('#auto_sync_enabled').is(':checked') ? 1 : 0
+            };
+            
+            $.post(inventorySyncData.ajaxurl, data);
+        },
+        
         saveSettings: function(e) {
             e.preventDefault();
             const $btn = $(e.target);
@@ -110,6 +138,7 @@
             const data = {
                 action: 'inventory_sync_save_settings',
                 _ajax_nonce: inventorySyncData.nonce,
+                current_site: $('#current_site').val(),
                 site1_name: $('#site1_name').val(),
                 site1_url: $('#site1_url').val(),
                 site1_key: $('#site1_key').val(),
@@ -146,55 +175,213 @@
             });
         },
         
-        // === Product Management ===
-        loadProducts: function(site) {
-            const $container = site === 'site1' ? 
-                $('.site1-products') : $('.site2-products');
-            
-            $container.html('<p>' + inventorySyncData.i18n.loading + '</p>');
+        // === Mapping Management ===
+        loadMappingProductsDropdown: function(site) {
+            const $select = site === 'site1' ? 
+                $('#mapping-site1-product') : $('#mapping-site2-product');
             
             $.ajax({
                 url: inventorySyncData.ajaxurl,
                 type: 'POST',
                 data: {
-                    action: 'inventory_sync_get_products',
+                    action: 'inventory_sync_get_mapped_products',
                     _ajax_nonce: inventorySyncData.nonce,
                     site: site,
                     page: 1
                 },
                 success: (response) => {
-                    if (response.success) {
-                        this.renderProducts($container, response.data, site);
+                    if (response.success && response.data) {
+                        let options = '<option value="">' + inventorySyncData.i18n.selectProducts + '</option>';
+                        response.data.forEach(product => {
+                            options += `<option value="${product.id}" data-name="${product.name}" data-stock="${product.stock_quantity || 0}">
+                                ${product.name} (SKU: ${product.sku || 'N/A'})
+                            </option>`;
+                        });
+                        $select.html(options);
                     }
-                },
-                error: () => {
-                    $container.html('<p class="alert alert-error">' + inventorySyncData.i18n.error + '</p>');
                 }
             });
         },
         
-        renderProducts: function($container, products, site) {
-            if (!products || products.length === 0) {
-                $container.html('<p>' + inventorySyncData.i18n.selectProducts + '</p>');
+        loadMappingProducts: function(site) {
+            if (site === 'site1') {
+                this.loadMappingProductsDropdown('site1');
+            } else {
+                this.loadMappingProductsDropdown('site2');
+            }
+        },
+        
+        createMapping: function(e) {
+            e.preventDefault();
+            
+            const site1_id = $('#mapping-site1-product').val();
+            const site2_id = $('#mapping-site2-product').val();
+            
+            if (!site1_id || !site2_id) {
+                alert('لطفاً محصولات را از هر دو سایت انتخاب کنید');
+                return;
+            }
+            
+            const $btn = $('#create-mapping-btn');
+            const originalText = $btn.text();
+            $btn.attr('disabled', true).text(inventorySyncData.i18n.syncing);
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_create_mapping',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    site1_id: site1_id,
+                    site2_id: site2_id
+                },
+                success: (response) => {
+                    if (response.success) {
+                        $('#mapping-status-message')
+                            .removeClass('error')
+                            .addClass('success')
+                            .text('✓ ' + response.data.message)
+                            .show();
+                        
+                        // بروز رسانی لیست و dropdown‌ها
+                        setTimeout(() => {
+                            this.loadMappedProductsList();
+                            this.loadMappingProductsDropdown('site1');
+                            this.loadMappingProductsDropdown('site2');
+                            $('#mapping-site1-product').val('');
+                            $('#mapping-site2-product').val('');
+                            $('#mapping-status-message').hide();
+                        }, 1500);
+                    } else {
+                        $('#mapping-status-message')
+                            .removeClass('success')
+                            .addClass('error')
+                            .text('✗ ' + response.data)
+                            .show();
+                    }
+                },
+                error: () => {
+                    $('#mapping-status-message')
+                        .removeClass('success')
+                        .addClass('error')
+                        .text('✗ ' + inventorySyncData.i18n.error)
+                        .show();
+                },
+                complete: () => {
+                    $btn.attr('disabled', false).text(originalText);
+                }
+            });
+        },
+        
+        loadMappedProductsList: function() {
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_get_mapping',
+                    _ajax_nonce: inventorySyncData.nonce
+                },
+                success: (response) => {
+                    if (response.success) {
+                        this.renderMappedProducts(response.data);
+                    }
+                }
+            });
+        },
+        
+        renderMappedProducts: function(mappings) {
+            const $tbody = $('.mapped-products-list');
+            
+            if (!mappings || mappings.length === 0) {
+                $tbody.html('<tr><td colspan="8" class="text-center">محصول مرتبط‌شده‌ای وجود ندارد</td></tr>');
                 return;
             }
             
             let html = '';
-            products.forEach(product => {
+            mappings.forEach((mapping, index) => {
+                const syncStatus = mapping.sync_status === 'synced' ? '✓ هماهنگ' : 
+                                   mapping.sync_status === 'error' ? '✗ خطا' : '⏳ در حال انتظار';
+                
                 html += `
-                    <div class="product-item" data-site="${site}" data-id="${product.id}">
-                        <div class="product-name">${product.name}</div>
-                        <div class="product-sku">SKU: ${product.sku || 'N/A'}</div>
-                        <div class="product-stock">📦 موجودی: ${product.stock_quantity || 0}</div>
-                    </div>
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>${mapping.site1_product_name || 'محصول #' + mapping.site1_product_id}</td>
+                        <td>${mapping.site1_stock || 0}</td>
+                        <td style="text-align: center;">⇄</td>
+                        <td>${mapping.site2_product_name || 'محصول #' + mapping.site2_product_id}</td>
+                        <td>${mapping.site2_stock || 0}</td>
+                        <td>${syncStatus}</td>
+                        <td>
+                            <button class="button button-small sync-mapping-btn" data-mapping-id="${mapping.id}">
+                                ⚡ Sync
+                            </button>
+                            <button class="button button-small delete-mapping-btn" data-mapping-id="${mapping.id}">
+                                🗑️
+                            </button>
+                        </td>
+                    </tr>
                 `;
             });
             
-            $container.html(html);
+            $tbody.html(html);
         },
         
-        selectProduct: function(e) {
-            $(e.target).closest('.product-item').toggleClass('selected');
+        deleteMapping: function(e) {
+            e.preventDefault();
+            if (!confirm('آیا از حذف این مرتبط‌سازی اطمینان دارید؟')) {
+                return;
+            }
+            
+            const mappingId = $(e.target).attr('data-mapping-id');
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_delete_mapping',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    mapping_id: mappingId
+                },
+                success: () => {
+                    this.loadMappedProductsList();
+                    this.loadMappingProductsDropdown('site1');
+                    this.loadMappingProductsDropdown('site2');
+                }
+            });
+        },
+        
+        syncMapping: function(e) {
+            e.preventDefault();
+            
+            const $btn = $(e.target);
+            const mappingId = $btn.attr('data-mapping-id');
+            const originalText = $btn.text();
+            
+            $btn.attr('disabled', true).text(inventorySyncData.i18n.syncing);
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_sync_inventory',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    mapping_id: mappingId
+                },
+                success: (response) => {
+                    if (response.success) {
+                        alert('✓ موجودی هماهنگ شد');
+                        this.loadMappedProductsList();
+                    } else {
+                        alert('✗ ' + response.data);
+                    }
+                },
+                error: () => {
+                    alert('✗ ' + inventorySyncData.i18n.error);
+                },
+                complete: () => {
+                    $btn.attr('disabled', false).text(originalText);
+                }
+            });
         },
         
         // === Inventory Sync ===

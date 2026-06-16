@@ -4,6 +4,22 @@ class Inventory_Sync_Settings {
     
     const OPTION_PREFIX = 'inventory_sync_';
     
+    /**
+     * مشخص کردن اینکه سایت فعلی کدام یک است
+     * مقادیر: 'site1' یا 'site2'
+     */
+    public static function get_current_site() {
+        return get_option(self::OPTION_PREFIX . 'current_site', 'site1');
+    }
+    
+    public static function is_site1() {
+        return self::get_current_site() === 'site1';
+    }
+    
+    public static function is_site2() {
+        return self::get_current_site() === 'site2';
+    }
+    
     public static function get_site1_name() {
         return get_option(self::OPTION_PREFIX . 'site1_name', 'سایت 1');
     }
@@ -51,6 +67,11 @@ class Inventory_Sync_Settings {
     public static function save_settings($data) {
         if (empty($data) || !is_array($data)) {
             return false;
+        }
+        
+        // ذخیره مشخص کردن سایت فعلی
+        if (!empty($data['current_site'])) {
+            update_option(self::OPTION_PREFIX . 'current_site', sanitize_text_field($data['current_site']));
         }
         
         update_option(self::OPTION_PREFIX . 'site1_name', sanitize_text_field($data['site1_name'] ?? ''));
