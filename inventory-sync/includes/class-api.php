@@ -97,10 +97,50 @@ class Inventory_Sync_API {
     }
     
     /**
+     * دریافت موجودی محصول
+     */
+    public function get_product_stock($product_id) {
+        $product = $this->get_product($product_id);
+        
+        if (is_wp_error($product)) {
+            return is_wp_error($product) ? 0 : intval($product['stock_quantity'] ?? 0);
+        }
+        
+        return intval($product['stock_quantity'] ?? 0);
+    }
+    
+    /**
+     * دریافت موجودی متغیر
+     */
+    public function get_variation_stock($product_id, $variant_id) {
+        $endpoint = '/wp-json/wc/v3/products/' . intval($product_id) . '/variations/' . intval($variant_id);
+        $variant = $this->request('GET', $endpoint, []);
+        
+        if (is_wp_error($variant)) {
+            return 0;
+        }
+        
+        return intval($variant['stock_quantity'] ?? 0);
+    }
+    
+    /**
      * به‌روزرسانی موجودی
      */
     public function update_product_stock($product_id, $stock) {
         $endpoint = '/wp-json/wc/v3/products/' . intval($product_id);
+        $data = [
+            'stock_quantity' => intval($stock),
+            'manage_stock' => true
+        ];
+        
+        return $this->request('PUT', $endpoint, $data);
+    }
+    
+    /**
+     * به‌روزرسانی موجودی متغیر
+     */
+    public function update_variation_stock($product_id, $variant_id, $stock) {
+        $endpoint = '/wp-json/wc/v3/products/' . intval($product_id) . '/variations/' . intval($variant_id);
         $data = [
             'stock_quantity' => intval($stock),
             'manage_stock' => true
