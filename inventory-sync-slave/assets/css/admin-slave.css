@@ -1,0 +1,17 @@
+/* Inventory Sync Slave Styles */
+
+:root {
+    --primary: #10b981;
+    --primary-dark: #059669;
+    --secondary: #0ea5e9;
+    --light: #f9fafb;
+    --border: #e5e7eb;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+.inventory-sync-slave-dashboard {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
