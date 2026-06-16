@@ -37,9 +37,7 @@
         },
         
         loadInitialData: function() {
-            this.loadMappedProductsList();
-            this.loadMappingProductsDropdown('site1');
-            this.loadMappingProductsDropdown('site2');
+            // محصولات مرتبط و dropdown‌ها وقتی تب mapping باز شود لود می‌شوند
             this.loadTransferProducts();
             this.loadTransferredProducts();
             this.loadLogs();
@@ -62,6 +60,12 @@
             // Load data if needed
             if (tabName === 'logs') {
                 this.loadLogs();
+            } else if (tabName === 'mapping') {
+                // لود محصولات هنگام باز کردن تب مرتبط‌سازی
+                console.log('[v0] Loading mapping tab data');
+                this.loadMappedProductsList();
+                this.loadMappingProductsDropdown('site1');
+                this.loadMappingProductsDropdown('site2');
             }
         },
         
@@ -180,7 +184,9 @@
             const $select = site === 'site1' ? 
                 $('#mapping-site1-product') : $('#mapping-site2-product');
             
-            $select.html('<option value="">درحال بارگذاری...</option>');
+            $select.html('<option value="">درحال بارگذاری...</option>').prop('disabled', false);
+            
+            console.log('[v0] شروع بارگذاری محصولات برای:', site);
             
             $.ajax({
                 url: inventorySyncData.ajaxurl,
@@ -191,6 +197,46 @@
                     site: site,
                     page: 1
                 },
+                dataType: 'json',
+                timeout: 10000,
+                success: (response) => {
+                    console.log('[v0] پاسخ دریافت شد برای ' + site + ':', response);
+                    
+                    let options = '<option value="">انتخاب محصول...</option>';
+                    
+                    if (response.success && response.data && response.data.length > 0) {
+                        response.data.forEach(product => {
+                            const productName = (product.name || 'محصول بدون نام') + 
+                                (product.sku ? ' (SKU: ' + product.sku + ')' : '');
+                            const stock = product.stock_quantity || 0;
+                            
+                            options += `<option value="${product.id}" data-stock="${stock}">
+                                ${productName} - موجودی: ${stock}
+                            </option>`;
+                        });
+                        console.log('[v0] موفقیت: ' + response.data.length + ' محصول برای ' + site + ' لود شد');
+                    } else if (response.success) {
+                        options += '<option value="" disabled>محصول موجود نیست (احتمالا همه مرتبط هستند)</option>';
+                        console.log('[v0] برای سایت ' + site + ' محصول نشده‌مرتبط وجود ندارد');
+                    } else {
+                        options = '<option value="" disabled>⚠️ خطا: ' + (response.data || 'نامشخص') + '</option>';
+                        console.error('[v0] خطا در بارگذاری محصولات برای ' + site + ':', response.data);
+                    }
+                    
+                    $select.html(options);
+                },
+                error: (xhr, status, error) => {
+                    let errorMsg = 'خطا در اتصال';
+                    
+                    if (xhr.responseJSON && xhr.responseJSON.data) {
+                        errorMsg = xhr.responseJSON.data;
+                    }
+                    
+                    $select.html('<option value="" disabled>⚠️ ' + errorMsg + '</option>').prop('disabled', true);
+                    console.error('[v0] AJAX خطا برای ' + site + ':', status, error, xhr.responseText);
+                }
+            });
+        },
                 success: (response) => {
                     let options = '<option value="">انتخاب محصول...</option>';
                     

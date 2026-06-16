@@ -36,7 +36,7 @@ if (!defined('ABSPATH')) exit;
     <div class="tab-content">
         <!-- Settings Tab -->
         <div id="settings" class="tab-pane active">
-            <div class="settings-container">
+            <form id="settings-form" class="settings-container">
                 <h2><?php esc_html_e('تنظیمات سایت‌ها', 'inventory-sync'); ?></h2>
                 
                 <!-- تعیین کنندگی سایت فعلی -->
@@ -194,12 +194,12 @@ if (!defined('ABSPATH')) exit;
                 </div>
                 
                 <div class="form-actions">
-                    <button class="button button-primary save-settings-btn">
+                    <button type="button" class="button button-primary save-settings-btn">
                         <?php esc_html_e('💾 ذخیره تنظیمات', 'inventory-sync'); ?>
                     </button>
                     <span class="status-message"></span>
                 </div>
-            </div>
+            </form>
         </div>
         
         <!-- Mapping Tab -->

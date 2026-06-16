@@ -125,8 +125,20 @@ class Inventory_Sync_Admin {
             wp_send_json_error('عدم دسترسی');
         }
         
-        $data = $_POST;
-        unset($data['action'], $data['_ajax_nonce']);
+        // Sanitize تمام داده‌ها
+        $data = [
+            'current_site' => sanitize_text_field($_POST['current_site'] ?? 'site1'),
+            'site1_name' => sanitize_text_field($_POST['site1_name'] ?? ''),
+            'site1_url' => esc_url_raw($_POST['site1_url'] ?? ''),
+            'site1_key' => sanitize_text_field($_POST['site1_key'] ?? ''),
+            'site1_secret' => sanitize_text_field($_POST['site1_secret'] ?? ''),
+            'site2_name' => sanitize_text_field($_POST['site2_name'] ?? ''),
+            'site2_url' => esc_url_raw($_POST['site2_url'] ?? ''),
+            'site2_key' => sanitize_text_field($_POST['site2_key'] ?? ''),
+            'site2_secret' => sanitize_text_field($_POST['site2_secret'] ?? ''),
+            'sync_direction' => sanitize_text_field($_POST['sync_direction'] ?? 'site1_to_site2'),
+            'auto_sync_enabled' => !empty($_POST['auto_sync_enabled']) ? 1 : 0,
+        ];
         
         if (Inventory_Sync_Settings::save_settings($data)) {
             wp_send_json_success('تنظیمات ذخیره شد');
