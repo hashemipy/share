@@ -48,6 +48,16 @@
         switchTab: function(e) {
             e.preventDefault();
             const $tab = $(e.target);
+            
+            // اگر تب مرتبط‌سازی محصولات کلیک شد، محصولات را بارگذاری کن
+            if ($tab.data('tab') === 'mapping' && $('#site1-product-select').find('option').length <= 1) {
+                this.loadProductSelects();
+            }
+            
+            // اگر تب انتقال محصولات کلیک شد، محصولات را بارگذاری کن
+            if ($tab.data('tab') === 'transfer' && $('#transfer-product-select').find('option').length <= 1) {
+                this.loadTransferProducts();
+            }
             const tabName = $tab.attr('data-tab');
             
             // Update active tab
@@ -478,7 +488,7 @@
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_get_all_products',
-                    _ajax_nonce: inventorySyncData.nonce
+                    nonce: inventorySyncData.nonce
                 },
                 success: (response) => {
                     if (response.success && response.data) {
