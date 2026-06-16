@@ -23,7 +23,7 @@
             // Mapping
             $(document).on('click', '.sync-all-btn', this.syncAllInventory.bind(this));
             $(document).on('click', '.product-item', this.selectProduct.bind(this));
-            $(document).on('click', '.create-mapping-btn', this.createMapping.bind(this));
+            $(document).on('click', '#create-mapping-btn', this.createMapping.bind(this));
             $(document).on('click', '.remove-mapping-btn', this.removeMapping.bind(this));
             
             // Transfer
@@ -34,8 +34,11 @@
         },
         
         loadInitialData: function() {
-            this.loadProducts('site1');
-            this.loadProducts('site2');
+            // برای تب مرتبط سازی
+            this.loadMappingProducts('site1');
+            this.loadMappingProducts('site2');
+            
+            // برای تب انتقال
             this.loadTransferProducts();
             this.loadTransferredProducts();
             this.loadLogs();
@@ -198,6 +201,74 @@
         
         selectProduct: function(e) {
             $(e.target).closest('.product-item').toggleClass('selected');
+        },
+        
+        // === Mapping Products (برای تب مرتبط سازی) ===
+        loadMappingProducts: function(site) {
+            const $container = site === 'site1' ? 
+                $('.site1-products') : $('.site2-products');
+            
+            $container.html('<p>' + inventorySyncData.i18n.loading + '</p>');
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_get_mapping_products',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    site: site,
+                    page: 1,
+                    per_page: 20
+                },
+                success: (response) => {
+                    if (response.success) {
+                        this.renderMappingProducts($container, response.data.products, site);
+                    } else {
+                        $container.html('<p class="alert alert-error">' + (response.data || inventorySyncData.i18n.error) + '</p>');
+                    }
+                },
+                error: (xhr) => {
+                    $container.html('<p class="alert alert-error">خطا در بارگذاری محصولات</p>');
+                }
+            });
+        },
+        
+        renderMappingProducts: function($container, products, site) {
+            if (!products || products.length === 0) {
+                $container.html('<p style="color: #666; padding: 10px;">هیچ محصولی برای مرتبط‌سازی موجود نیست</p>');
+                return;
+            }
+            
+            let html = '';
+            products.forEach(product => {
+                html += `
+                    <div class="product-item" data-site="${site}" data-id="${product.id}">
+                        <div class="product-name">${product.name}</div>
+                        <div class="product-sku">SKU: ${product.sku || 'بدون SKU'}</div>
+                        <div class="product-stock">📦 موجودی: ${product.stock_quantity || 0}</div>
+                    </div>
+                `;
+            });
+            
+            $container.html(html);
+        },
+        
+        selectProduct: function(e) {
+            const $item = $(e.target).closest('.product-item');
+            if (!$item.length) return;
+            
+            $item.toggleClass('selected');
+            
+            // ذخیره ID محصول انتخاب‌شده
+            const site = $item.attr('data-site');
+            const id = $item.attr('data-id');
+            
+            if ($item.hasClass('selected')) {
+                $(`[data-selected-${site}-id]`).removeAttr('data-selected-' + site + '-id');
+                $item.attr('data-selected-' + site + '-id', id);
+            } else {
+                $item.removeAttr('data-selected-' + site + '-id');
+            }
         },
         
         // === Inventory Sync ===
@@ -506,11 +577,11 @@
                             .show();
                     }
                 },
-                error: () => {
+                error: (xhr, status, error) => {
                     $('.site-role-status')
                         .removeClass('success')
                         .addClass('error')
-                        .text('✗ خطا در برقراری ارتباط')
+                        .text('✗ خطا در برقراری ارتباط: ' + error)
                         .show();
                 },
                 complete: () => {
@@ -522,8 +593,13 @@
         // === جدید: ایجاد مرتبط‌سازی ===
         createMapping: function(e) {
             e.preventDefault();
-            const site1ProductId = $('[data-selected-site1-id]').attr('data-selected-site1-id');
-            const site2ProductId = $('[data-selected-site2-id]').attr('data-selected-site2-id');
+            
+            // دریافت ID محصولات انتخاب شده
+            const $site1Selected = $('.site1-products [data-selected-site1-id]');
+            const $site2Selected = $('.site2-products [data-selected-site2-id]');
+            
+            const site1ProductId = $site1Selected.attr('data-id');
+            const site2ProductId = $site2Selected.attr('data-id');
             
             if (!site1ProductId || !site2ProductId) {
                 alert('لطفاً یک محصول از هر سایت انتخاب کنید');
@@ -541,14 +617,14 @@
                 },
                 success: (response) => {
                     if (response.success) {
-                        alert('✓ ' + response.data.message);
-                        this.loadProducts('site1');
-                        this.loadProducts('site2');
+                        alert('✓ محصولات با موفقیت مرتبط شدند');
+                        this.loadMappingProducts('site1');
+                        this.loadMappingProducts('site2');
                     } else {
-                        alert('✗ ' + response.data);
+                        alert('✗ خطا: ' + response.data);
                     }
                 },
-                error: () => {
+                error: (xhr) => {
                     alert('✗ خطا در ایجاد مرتبط‌سازی');
                 }
             });
@@ -573,11 +649,11 @@
                 },
                 success: (response) => {
                     if (response.success) {
-                        alert('✓ ' + response.data.message);
-                        this.loadProducts('site1');
-                        this.loadProducts('site2');
+                        alert('✓ مرتبط‌سازی حذف شد');
+                        this.loadMappingProducts('site1');
+                        this.loadMappingProducts('site2');
                     } else {
-                        alert('✗ ' + response.data);
+                        alert('✗ خطا: ' + response.data);
                     }
                 },
                 error: () => {

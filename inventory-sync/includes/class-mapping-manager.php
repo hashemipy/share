@@ -125,7 +125,7 @@ class Inventory_Sync_Mapping_Manager {
                 'id' => $product['id'] ?? null,
                 'name' => $product['name'] ?? 'بدون نام',
                 'sku' => $product['sku'] ?? '--',
-                'stock' => $product['stock_quantity'] ?? 0,
+                'stock_quantity' => $product['stock_quantity'] ?? ($product['stock'] ?? 0),
                 'image' => $product['images'][0]['src'] ?? '',
                 'type' => $product['type'] ?? 'simple',
                 'variations_count' => count($product['variations'] ?? [])
