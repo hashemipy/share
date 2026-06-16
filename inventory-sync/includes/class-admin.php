@@ -29,20 +29,51 @@ class Inventory_Sync_Admin {
         add_action('wp_ajax_inventory_sync_add_mapping', [$this, 'ajax_add_mapping']);
         add_action('wp_ajax_inventory_sync_sync_all_mappings', [$this, 'ajax_sync_all_mappings']);
         add_action('wp_ajax_inventory_sync_sync_mapping', [$this, 'ajax_sync_mapping']);
+        
+        // Setup handler
+        add_action('wp_ajax_inventory_sync_set_site_type', [$this, 'ajax_set_site_type']);
+    }
+        add_action('wp_ajax_inventory_sync_sync_mapping', [$this, 'ajax_sync_mapping']);
         add_action('wp_ajax_inventory_sync_toggle_mapping', [$this, 'ajax_toggle_mapping']);
         add_action('wp_ajax_inventory_sync_delete_mapping', [$this, 'ajax_delete_mapping']);
     }
     
     public function add_menu() {
-        add_menu_page(
-            'Inventory Sync',
-            'Inventory Sync',
-            'manage_woocommerce',
-            'inventory-sync',
-            [$this, 'render_dashboard'],
-            'dashicons-sync',
-            25
-        );
+        $current_site = Inventory_Sync_Settings::get_current_site_type();
+        
+        // اگر سایت تنظیم نشده باشد، setup صفحہ نمایش دہید
+        if (!$current_site || empty($current_site)) {
+            add_menu_page(
+                'Inventory Sync - راهنمای تنظیم',
+                'Inventory Sync',
+                'manage_woocommerce',
+                'inventory-sync',
+                [$this, 'render_setup_wizard'],
+                'dashicons-sync',
+                25
+            );
+        } else {
+            add_menu_page(
+                'Inventory Sync',
+                'Inventory Sync',
+                'manage_woocommerce',
+                'inventory-sync',
+                [$this, 'render_dashboard'],
+                'dashicons-sync',
+                25
+            );
+        }
+    }
+    
+    /**
+     * صفحہ setup wizard نمایش دھیں
+     */
+    public function render_setup_wizard() {
+        if (!current_user_can('manage_woocommerce')) {
+            wp_die(__('دسترسی رد شد', 'inventory-sync'));
+        }
+        
+        include INVENTORY_SYNC_PLUGIN_DIR . 'admin/setup-wizard.php';
     }
     
     public function enqueue_assets($hook_suffix) {
@@ -650,4 +681,28 @@ class Inventory_Sync_Admin {
             wp_send_json_error('ڈیٹا بیس خرابی: ' . $wpdb->last_error);
         }
     }
+    
+    /**
+     * نوع سایت را تنظیم کنید
+     */
+    public function ajax_set_site_type() {
+        check_ajax_referer('inventory_sync_setup');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('دسترسی رد شد');
+        }
+        
+        $site_type = sanitize_text_field($_POST['site_type'] ?? '1');
+        
+        if (!in_array($site_type, ['1', '2'])) {
+            wp_send_json_error('نوع سایت نامعتبر است');
+        }
+        
+        if (Inventory_Sync_Settings::set_current_site_type($site_type)) {
+            wp_send_json_success('سایت تنظیم شد');
+        } else {
+            wp_send_json_error('خطا در تنظیم');
+        }
+    }
 }
+

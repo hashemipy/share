@@ -51,11 +51,10 @@ add_action('init', function () {
 
 // Activation Hook
 register_activation_hook(__FILE__, function () {
-    require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-database.php';
-    require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-database-migration.php';
+    require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-db.php';
     
-    Inventory_Sync_Database::create_tables();
-    Inventory_Sync_Database_Migration::run_migrations();
+    // ایجاد جداول و indexes
+    Inventory_Sync_DB::create_tables();
     
     flush_rewrite_rules();
 });
