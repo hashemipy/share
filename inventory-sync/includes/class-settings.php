@@ -4,6 +4,29 @@ class Inventory_Sync_Settings {
     
     const OPTION_PREFIX = 'inventory_sync_';
     
+    /**
+     * تعیین هویت سایت جاری (سایت 1 یا سایت 2)
+     */
+    public static function get_current_site_role() {
+        return get_option(self::OPTION_PREFIX . 'current_site_role', '');
+    }
+    
+    public static function set_current_site_role($role) {
+        if (!in_array($role, ['is_site1', 'is_site2'], true)) {
+            return false;
+        }
+        update_option(self::OPTION_PREFIX . 'current_site_role', $role);
+        return true;
+    }
+    
+    public static function is_site1() {
+        return self::get_current_site_role() === 'is_site1';
+    }
+    
+    public static function is_site2() {
+        return self::get_current_site_role() === 'is_site2';
+    }
+    
     public static function get_site1_name() {
         return get_option(self::OPTION_PREFIX . 'site1_name', 'سایت 1');
     }
@@ -51,6 +74,11 @@ class Inventory_Sync_Settings {
     public static function save_settings($data) {
         if (empty($data) || !is_array($data)) {
             return false;
+        }
+        
+        // ذخیره هویت سایت
+        if (isset($data['current_site_role']) && in_array($data['current_site_role'], ['is_site1', 'is_site2'], true)) {
+            self::set_current_site_role($data['current_site_role']);
         }
         
         update_option(self::OPTION_PREFIX . 'site1_name', sanitize_text_field($data['site1_name'] ?? ''));

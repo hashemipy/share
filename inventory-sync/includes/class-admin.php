@@ -125,7 +125,7 @@ class Inventory_Sync_Admin {
         unset($data['action'], $data['_ajax_nonce']);
         
         if (Inventory_Sync_Settings::save_settings($data)) {
-            wp_send_json_success('تنظیمات ذخیره شد');
+            wp_send_json_success('تنظیمات ذخیره شد. صفحه در حال بازنشانی است...');
         } else {
             wp_send_json_error('خطا در ذخیره');
         }
@@ -171,6 +171,10 @@ class Inventory_Sync_Admin {
             wp_send_json_error('عدم دسترسی');
         }
         
+        if (!Inventory_Sync_Settings::is_site1()) {
+            wp_send_json_error('این ویژگی فقط در سایت 1 دسترسی‌پذیر است');
+        }
+        
         global $wpdb;
         
         $site1_id = intval($_POST['site1_id'] ?? 0);
@@ -182,6 +186,19 @@ class Inventory_Sync_Admin {
             wp_send_json_error('شناسه‌های محصول مورد نیاز است');
         }
         
+        // بررسی وجود نقشه‌برداری قبلی
+        $existing = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}inventory_sync_mapping 
+             WHERE site1_product_id = %d AND site2_product_id = %d",
+            $site1_id,
+            $site2_id
+        ));
+        
+        if ($existing) {
+            wp_send_json_error('این نقشه‌برداری از قبل موجود است');
+        }
+        
+        // استفاده از prepared statements برای ایمنی
         $result = $wpdb->insert(
             $wpdb->prefix . 'inventory_sync_mapping',
             [
@@ -190,13 +207,16 @@ class Inventory_Sync_Admin {
                 'site1_sku' => $site1_sku,
                 'site2_sku' => $site2_sku,
                 'sync_enabled' => 1
-            ]
+            ],
+            ['%d', '%d', '%s', '%s', '%d']
         );
         
         if ($result) {
+            // ثبت لاگ
+            do_action('inventory_sync_mapping_created', $site1_id, $site2_id);
             wp_send_json_success('نقشه‌برداری ذخیره شد');
         } else {
-            wp_send_json_error('خطا در ذخیره');
+            wp_send_json_error('خطا در ذخیره: ' . $wpdb->last_error);
         }
     }
     

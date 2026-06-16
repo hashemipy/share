@@ -22,6 +22,10 @@
             // Mapping
             $(document).on('click', '.sync-all-btn', this.syncAllInventory.bind(this));
             $(document).on('click', '.product-item', this.selectProduct.bind(this));
+            $(document).on('click', '.connect-products-btn', this.connectProducts.bind(this));
+            $(document).on('click', '.clear-selection-btn', this.clearSelection.bind(this));
+            $(document).on('keyup', '.site1-search', this.searchProducts.bind(this));
+            $(document).on('keyup', '.site2-search', this.searchProducts.bind(this));
             
             // Transfer
             $(document).on('click', '#select-all-transfer', this.toggleSelectAll.bind(this));
@@ -110,6 +114,7 @@
             const data = {
                 action: 'inventory_sync_save_settings',
                 _ajax_nonce: inventorySyncData.nonce,
+                current_site_role: $('input[name="current_site_role"]:checked').val(),
                 site1_name: $('#site1_name').val(),
                 site1_url: $('#site1_url').val(),
                 site1_key: $('#site1_key').val(),
@@ -132,6 +137,11 @@
                             .removeClass('error')
                             .addClass('success')
                             .text('✓ ' + response.data);
+                        
+                        // تحدیث صفحه برای نمایش تب مرتبط‌سازی یا پنهان کردن آن
+                        setTimeout(() => {
+                            location.reload();
+                        }, 1500);
                     }
                 },
                 error: () => {
@@ -195,6 +205,104 @@
         
         selectProduct: function(e) {
             $(e.target).closest('.product-item').toggleClass('selected');
+            this.updateSelectionDisplay();
+        },
+        
+        updateSelectionDisplay: function() {
+            const site1Selected = $('.site1-products .product-item.selected').first();
+            const site2Selected = $('.site2-products .product-item.selected').first();
+            
+            if (site1Selected.length && site2Selected.length) {
+                // نمایش پنل انتخاب
+                $('.selected-products-display').show();
+                
+                // بروزرسانی نام‌های محصولات
+                $('.site1-selected .selected-name').text(
+                    site1Selected.find('.product-name').text()
+                );
+                $('.site2-selected .selected-name').text(
+                    site2Selected.find('.product-name').text()
+                );
+                
+                // ذخیره شناسه‌ها
+                $('.connect-products-btn').data({
+                    'site1_id': site1Selected.attr('data-id'),
+                    'site2_id': site2Selected.attr('data-id'),
+                    'site1_sku': site1Selected.find('.product-sku').text().replace('SKU: ', ''),
+                    'site2_sku': site2Selected.find('.product-sku').text().replace('SKU: ', '')
+                });
+            } else {
+                $('.selected-products-display').hide();
+            }
+        },
+        
+        connectProducts: function(e) {
+            e.preventDefault();
+            const $btn = $(e.target);
+            const data = $btn.data();
+            
+            if (!data.site1_id || !data.site2_id) {
+                alert('لطفا دو محصول را انتخاب کنید');
+                return;
+            }
+            
+            $btn.attr('disabled', true).text(inventorySyncData.i18n.saving);
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_save_mapping',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    site1_id: data.site1_id,
+                    site2_id: data.site2_id,
+                    site1_sku: data.site1_sku,
+                    site2_sku: data.site2_sku
+                },
+                success: (response) => {
+                    if (response.success) {
+                        alert('✓ ' + response.data);
+                        this.clearSelection();
+                        // بارگذاری مجدد محصولات برای نمایش نقشه‌برداری
+                        this.loadProducts('site1');
+                        this.loadProducts('site2');
+                    } else {
+                        alert('✗ ' + response.data);
+                    }
+                },
+                error: () => {
+                    alert('✗ ' + inventorySyncData.i18n.error);
+                },
+                complete: () => {
+                    $btn.attr('disabled', false).text(inventorySyncData.i18n.testConnection);
+                }
+            });
+        },
+        
+        clearSelection: function(e) {
+            if (e) e.preventDefault();
+            
+            $('.site1-products .product-item.selected').removeClass('selected');
+            $('.site2-products .product-item.selected').removeClass('selected');
+            $('.selected-products-display').hide();
+        },
+        
+        searchProducts: function(e) {
+            const searchTerm = $(e.target).val().toLowerCase();
+            const isInSite1 = $(e.target).hasClass('site1-search');
+            const $container = isInSite1 ? $('.site1-products') : $('.site2-products');
+            
+            $container.find('.product-item').each(function() {
+                const $item = $(this);
+                const productName = $item.find('.product-name').text().toLowerCase();
+                const productSku = $item.find('.product-sku').text().toLowerCase();
+                
+                if (productName.includes(searchTerm) || productSku.includes(searchTerm)) {
+                    $item.show();
+                } else {
+                    $item.hide();
+                }
+            });
         },
         
         // === Inventory Sync ===
