@@ -302,29 +302,52 @@ class Inventory_Sync_Admin {
             wp_send_json_error('رسائی نہیں');
         }
         
-        $site1_products = wc_get_products(['limit' => 500, 'status' => 'publish']);
-        $site2_products = [];
-        
-        // اگر remote API ہے تو سائٹ 2 سے بھی حاصل کریں
         try {
-            $api = new Inventory_Sync_API(
-                Inventory_Sync_Settings::get_site2_url(),
-                Inventory_Sync_Settings::get_site2_key(),
-                Inventory_Sync_Settings::get_site2_secret()
-            );
-            $site2_products = $api->get_products(500) ?: [];
+            $site1_products = wc_get_products(['limit' => 500, 'status' => 'publish']);
+            
+            if (empty($site1_products)) {
+                error_log('[inventory-sync] No products found for site1');
+            }
+            
+            error_log('[inventory-sync] Site1 products count: ' . count($site1_products));
+            
+            $site2_products = [];
+            
+            // اگر remote API ہے تو سائٹ 2 سے بھی حاصل کریں
+            $site2_url = Inventory_Sync_Settings::get_site2_url();
+            $site2_key = Inventory_Sync_Settings::get_site2_key();
+            $site2_secret = Inventory_Sync_Settings::get_site2_secret();
+            
+            if ($site2_url && $site2_key && $site2_secret) {
+                try {
+                    $api = new Inventory_Sync_API($site2_url, $site2_key, $site2_secret);
+                    $response = $api->get_products(500);
+                    
+                    if (is_wp_error($response)) {
+                        error_log('[inventory-sync] Site2 API Error: ' . $response->get_error_message());
+                    } else {
+                        $site2_products = $response ?: [];
+                        error_log('[inventory-sync] Site2 products count: ' . count($site2_products));
+                    }
+                } catch (Exception $e) {
+                    error_log('[inventory-sync] Site2 Exception: ' . $e->getMessage());
+                }
+            } else {
+                error_log('[inventory-sync] Site2 credentials not configured');
+            }
+            
+            $data = [
+                'site1' => array_map(function($p) {
+                    return ['id' => $p->get_id(), 'name' => $p->get_name(), 'sku' => $p->get_sku()];
+                }, $site1_products),
+                'site2' => $site2_products
+            ];
+            
+            wp_send_json_success($data);
         } catch (Exception $e) {
-            // API میں مسئلہ - خالی رہے گا
+            error_log('[inventory-sync] ajax_get_all_products Error: ' . $e->getMessage());
+            wp_send_json_error('خطا: ' . $e->getMessage());
         }
-        
-        $data = [
-            'site1' => array_map(function($p) {
-                return ['id' => $p->get_id(), 'name' => $p->get_name(), 'sku' => $p->get_sku()];
-            }, $site1_products),
-            'site2' => $site2_products
-        ];
-        
-        wp_send_json_success($data);
     }
     
     /**
