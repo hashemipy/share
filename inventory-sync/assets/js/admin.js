@@ -471,12 +471,14 @@
         
         // === Mapping Management ===
         loadProductSelects: function() {
+            $('#loading-message').show();
+            
             $.ajax({
                 url: inventorySyncData.ajaxurl,
                 type: 'POST',
                 data: {
                     action: 'inventory_sync_get_all_products',
-                    nonce: inventorySyncData.nonce
+                    _ajax_nonce: inventorySyncData.nonce
                 },
                 success: (response) => {
                     if (response.success && response.data) {
@@ -485,15 +487,40 @@
                         
                         this.populateSelect('#site1-product-select', site1);
                         this.populateSelect('#site2-product-select', site2);
+                        
+                        if (site1.length === 0 || site2.length === 0) {
+                            console.warn("هشدار: یکی از سایت‌ها محصول ندارد!");
+                        }
                     }
+                },
+                error: (xhr, status, error) => {
+                    console.error("خطا در دریافت محصولات:", error);
+                    $('#site1-product-select').html('<option value="">خطا: محصولات بارگذاری نشدند</option>');
+                    $('#site2-product-select').html('<option value="">خطا: محصولات بارگذاری نشدند</option>');
+                },
+                complete: () => {
+                    $('#loading-message').hide();
                 }
             });
         },
         
         populateSelect: function(selector, products) {
+            if (!products || !Array.isArray(products)) {
+                $(selector).html('<option value="">خطا: محصولات بارگذاری نشدند</option>');
+                return;
+            }
+            
+            if (products.length === 0) {
+                $(selector).html('<option value="">محصولی موجود نیست</option>');
+                return;
+            }
+            
             let html = '<option value="">انتخاب کنید...</option>';
             products.forEach(p => {
-                html += `<option value="${p.id}" data-sku="${p.sku}">${p.name}</option>`;
+                const id = p.id || '';
+                const name = p.name || 'بدون نام';
+                const sku = p.sku || '';
+                html += `<option value="${id}" data-sku="${sku}">${name}</option>`;
             });
             $(selector).html(html);
         },

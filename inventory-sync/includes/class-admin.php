@@ -302,19 +302,51 @@ class Inventory_Sync_Admin {
             wp_send_json_error('رسائی نہیں');
         }
         
+        error_log('[Inventory Sync] ajax_get_all_products شروع شد');
+        
         $site1_products = wc_get_products(['limit' => 500, 'status' => 'publish']);
+        error_log('[Inventory Sync] سایت 1 محصولات: ' . count($site1_products));
+        
         $site2_products = [];
+        $site2_url = Inventory_Sync_Settings::get_site2_url();
+        $site2_key = Inventory_Sync_Settings::get_site2_key();
+        $site2_secret = Inventory_Sync_Settings::get_site2_secret();
+        
+        error_log('[Inventory Sync] سایت 2 URL: ' . $site2_url);
         
         // اگر remote API ہے تو سائٹ 2 سے بھی حاصل کریں
-        try {
-            $api = new Inventory_Sync_API(
-                Inventory_Sync_Settings::get_site2_url(),
-                Inventory_Sync_Settings::get_site2_key(),
-                Inventory_Sync_Settings::get_site2_secret()
-            );
-            $site2_products = $api->get_products(500) ?: [];
-        } catch (Exception $e) {
-            // API میں مسئلہ - خالی رہے گا
+        if (!empty($site2_url) && !empty($site2_key) && !empty($site2_secret)) {
+            try {
+                $api = new Inventory_Sync_API($site2_url, $site2_key, $site2_secret);
+                $site2_raw = $api->get_products(500);
+                
+                error_log('[Inventory Sync] سایت 2 API response: ' . json_encode($site2_raw));
+                
+                // API response کو format کریں
+                if (!is_wp_error($site2_raw) && is_array($site2_raw)) {
+                    $site2_products = array_map(function($p) {
+                        if (is_array($p)) {
+                            return [
+                                'id' => isset($p['id']) ? $p['id'] : 0,
+                                'name' => isset($p['name']) ? $p['name'] : 'بدون نام',
+                                'sku' => isset($p['sku']) ? $p['sku'] : ''
+                            ];
+                        } else {
+                            return [
+                                'id' => isset($p->id) ? $p->id : 0,
+                                'name' => isset($p->name) ? $p->name : 'بدون نام',
+                                'sku' => isset($p->sku) ? $p->sku : ''
+                            ];
+                        }
+                    }, $site2_raw);
+                } else if (is_wp_error($site2_raw)) {
+                    error_log('[Inventory Sync] سایت 2 خطا: ' . $site2_raw->get_error_message());
+                }
+            } catch (Exception $e) {
+                error_log('[Inventory Sync] خطا در دریافت محصولات سایت 2: ' . $e->getMessage());
+            }
+        } else {
+            error_log('[Inventory Sync] سایت 2 تنظیمات ناقص هستند');
         }
         
         $data = [
@@ -323,6 +355,8 @@ class Inventory_Sync_Admin {
             }, $site1_products),
             'site2' => $site2_products
         ];
+        
+        error_log('[Inventory Sync] نهایی response: ' . json_encode($data));
         
         wp_send_json_success($data);
     }
