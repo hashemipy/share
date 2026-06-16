@@ -253,4 +253,78 @@ class Inventory_Sync_Database {
         
         return !empty($result);
     }
+    
+    // === Mapping Management Methods ===
+    public static function create_product_mapping($site1_product_id, $site2_product_id, $site1_sku = '', $site2_sku = '') {
+        global $wpdb;
+        
+        $result = $wpdb->insert(
+            $wpdb->prefix . 'inventory_sync_mapping',
+            [
+                'site1_product_id' => $site1_product_id,
+                'site2_product_id' => $site2_product_id,
+                'site1_sku' => $site1_sku,
+                'site2_sku' => $site2_sku,
+                'sync_enabled' => 1,
+                'sync_status' => 'pending',
+                'created_at' => current_time('mysql')
+            ],
+            ['%d', '%d', '%s', '%s', '%d', '%s', '%s']
+        );
+        
+        return $result ? $wpdb->insert_id : false;
+    }
+    
+    public static function get_all_mappings($limit = 100, $offset = 0) {
+        global $wpdb;
+        
+        return $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}inventory_sync_mapping WHERE sync_enabled = 1 ORDER BY created_at DESC LIMIT %d OFFSET %d",
+                $limit,
+                $offset
+            )
+        );
+    }
+    
+    public static function get_mapping_by_site1_id($site1_product_id) {
+        global $wpdb;
+        
+        return $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}inventory_sync_mapping WHERE site1_product_id = %d AND sync_enabled = 1",
+                $site1_product_id
+            )
+        );
+    }
+    
+    public static function delete_mapping($mapping_id) {
+        global $wpdb;
+        
+        return $wpdb->update(
+            $wpdb->prefix . 'inventory_sync_mapping',
+            ['sync_enabled' => 0],
+            ['id' => $mapping_id],
+            ['%d'],
+            ['%d']
+        );
+    }
+    
+    public static function update_mapping_sync_status($mapping_id, $status, $error_message = '') {
+        global $wpdb;
+        
+        return $wpdb->update(
+            $wpdb->prefix . 'inventory_sync_mapping',
+            [
+                'sync_status' => $status,
+                'last_sync' => current_time('mysql'),
+                'error_message' => $error_message,
+                'updated_at' => current_time('mysql')
+            ],
+            ['id' => $mapping_id],
+            ['%s', '%s', '%s', '%s'],
+            ['%d']
+        );
+    }
 }
+

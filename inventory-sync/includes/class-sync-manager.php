@@ -369,7 +369,7 @@ class Inventory_Sync_Manager {
             return;
         }
         
-        // ایندکس واریاسیون‌های مقصد بر اساس SKU
+        // ایندکس واریاسیون‌های مقصد بر اساس SKU (روش قدیمی)
         $to_by_sku = [];
         foreach ($to_variations as $v) {
             if (!empty($v['sku'])) {
@@ -379,13 +379,23 @@ class Inventory_Sync_Manager {
         
         $synced = 0;
         foreach ($from_variations as $v) {
+            $to_variation_id = null;
+            
+            // ابتدا تلاش برای match بر اساس SKU
             $sku = $v['sku'] ?? '';
-            if ($sku === '' || !isset($to_by_sku[$sku])) {
+            if ($sku !== '' && isset($to_by_sku[$sku])) {
+                $to_variation_id = $to_by_sku[$sku];
+            } else {
+                // اگر SKU match نشد، تلاش برای match بر اساس Attributes
+                $to_variation_id = $this->find_variation_by_attributes($v, $to_variations);
+            }
+            
+            if (!$to_variation_id) {
                 continue;
             }
             
             $stock = isset($v['stock_quantity']) ? intval($v['stock_quantity']) : 0;
-            $result = $to_api->update_variation_stock($to_id, $to_by_sku[$sku], $stock);
+            $result = $to_api->update_variation_stock($to_id, $to_variation_id, $stock);
             
             if (!is_wp_error($result)) {
                 $synced++;
@@ -403,6 +413,71 @@ class Inventory_Sync_Manager {
             'success',
             "موجودی {$synced} واریاسیون هماهنگ شد"
         );
+    }
+    
+    /**
+     * پیدا کردن variation در سایت مقصد بر اساس attributes
+     * یعنی اگر سایت 1 دارای variation با سایز M و رنگ سیاه است،
+     * این متد سایت 2 را جستجو می‌کند برای variation با همان سایز و رنگ
+     * 
+     * @param array $from_variation variation از سایت مبدا
+     * @param array $to_variations تمام variations سایت مقصد
+     * @return int|null شناسه variation match شده یا null
+     */
+    private function find_variation_by_attributes($from_variation, $to_variations) {
+        $from_attrs = $from_variation['attributes'] ?? [];
+        
+        if (empty($from_attrs) || !is_array($from_attrs)) {
+            return null;
+        }
+        
+        // ساخت امضای attribute برای سایت مبدا
+        $from_signature = $this->get_attributes_signature($from_attrs);
+        
+        // جستجو در variations سایت مقصد
+        foreach ($to_variations as $to_var) {
+            $to_attrs = $to_var['attributes'] ?? [];
+            
+            if (empty($to_attrs) || !is_array($to_attrs)) {
+                continue;
+            }
+            
+            // ساخت امضای attribute برای سایت مقصد
+            $to_signature = $this->get_attributes_signature($to_attrs);
+            
+            // اگر امضاها یکسان بودند، مطابق پیدا شد
+            if ($from_signature === $to_signature) {
+                return intval($to_var['id']);
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * ساخت امضای attribute برای مقایسه سریع
+     * مثال: ["سایز" => "M", "رنگ" => "سیاه"] => "رنگ=سیاه|سایز=M"
+     * 
+     * @param array $attributes آرایه attributes
+     * @return string امضای attributes
+     */
+    private function get_attributes_signature($attributes) {
+        if (empty($attributes)) {
+            return '';
+        }
+        
+        $pairs = [];
+        foreach ($attributes as $attr) {
+            $name = $attr['name'] ?? '';
+            $option = $attr['option'] ?? '';
+            
+            if ($name && $option) {
+                $pairs[] = strtolower($name) . '=' . strtolower($option);
+            }
+        }
+        
+        sort($pairs);
+        return implode('|', $pairs);
     }
     
     /**
@@ -427,7 +502,7 @@ class Inventory_Sync_Manager {
     }
     
     /**
-     * انتقال محصول شامل دسته‌بندی‌ها، ویژگی‌ها و متغیّرها
+     * انتقال محصول شامل دسته‌بندی‌ها، ویژگی‌ه�� و متغیّرها
      * 
      * ⭐ بسیار مهم: این متد حالا Idempotent است
      * یعنی اگر محصول قبلاً منتقل شده بود و پاک‌شد و دوباره منتقل شود، کار می‌کند

@@ -22,6 +22,10 @@ class Inventory_Sync_Admin {
         add_action('wp_ajax_inventory_sync_transfer_products', [$this, 'ajax_transfer_products']);
         add_action('wp_ajax_inventory_sync_get_logs', [$this, 'ajax_get_logs']);
         add_action('wp_ajax_inventory_sync_get_transferred_products', [$this, 'ajax_get_transferred_products']);
+        add_action('wp_ajax_inventory_sync_get_all_mappings', [$this, 'ajax_get_all_mappings']);
+        add_action('wp_ajax_inventory_sync_create_product_mapping', [$this, 'ajax_create_product_mapping']);
+        add_action('wp_ajax_inventory_sync_delete_mapping', [$this, 'ajax_delete_mapping']);
+        add_action('wp_ajax_inventory_sync_manual_sync_all', [$this, 'ajax_manual_sync_all']);
     }
     
     public function add_menu() {
@@ -281,5 +285,130 @@ class Inventory_Sync_Admin {
         $products = Inventory_Sync_Database::get_transferred_products($limit, $offset);
         
         wp_send_json_success($products);
+    }
+    
+    public function ajax_get_all_mappings() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('عدم دسترسی');
+        }
+        
+        $page = intval($_POST['page'] ?? 1);
+        $limit = 100;
+        $offset = ($page - 1) * $limit;
+        
+        $mappings = Inventory_Sync_Database::get_all_mappings($limit, $offset);
+        
+        wp_send_json_success($mappings);
+    }
+    
+    public function ajax_create_product_mapping() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('عدم دسترسی');
+        }
+        
+        if (!Inventory_Sync_Settings::is_site1()) {
+            wp_send_json_error('فقط سایت 1 می‌تواند مرتبط‌سازی‌ها را مدیریت کند');
+        }
+        
+        $site1_product_id = intval($_POST['site1_product_id'] ?? 0);
+        $site2_product_id = intval($_POST['site2_product_id'] ?? 0);
+        $site1_sku = sanitize_text_field($_POST['site1_sku'] ?? '');
+        $site2_sku = sanitize_text_field($_POST['site2_sku'] ?? '');
+        
+        if ($site1_product_id <= 0 || $site2_product_id <= 0) {
+            wp_send_json_error('محصولات معتبر نیستند');
+        }
+        
+        $existing = Inventory_Sync_Database::get_mapping_by_site1_id($site1_product_id);
+        if (!empty($existing)) {
+            wp_send_json_error('این محصول از قبل مرتبط شده است');
+        }
+        
+        $mapping_id = Inventory_Sync_Database::create_product_mapping(
+            $site1_product_id,
+            $site2_product_id,
+            $site1_sku,
+            $site2_sku
+        );
+        
+        if ($mapping_id) {
+            wp_send_json_success([
+                'id' => $mapping_id,
+                'message' => 'مرتبط‌سازی با موفقیت انجام شد'
+            ]);
+        } else {
+            wp_send_json_error('خطا در ایجاد مرتبط‌سازی');
+        }
+    }
+    
+    public function ajax_delete_mapping() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('عدم دسترسی');
+        }
+        
+        if (!Inventory_Sync_Settings::is_site1()) {
+            wp_send_json_error('فقط سایت 1 می‌تواند مرتبط‌سازی‌ها را مدیریت کند');
+        }
+        
+        $mapping_id = intval($_POST['mapping_id'] ?? 0);
+        
+        if ($mapping_id <= 0) {
+            wp_send_json_error('شناسه معتبر نیست');
+        }
+        
+        if (Inventory_Sync_Database::delete_mapping($mapping_id)) {
+            wp_send_json_success('مرتبط‌سازی حذف شد');
+        } else {
+            wp_send_json_error('خطا در حذف مرتبط‌سازی');
+        }
+    }
+    
+    public function ajax_manual_sync_all() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('عدم دسترسی');
+        }
+        
+        if (!Inventory_Sync_Settings::is_site1()) {
+            wp_send_json_error('فقط سایت 1 می‌تواند هماهنگ‌سازی را انجام دهد');
+        }
+        
+        global $wpdb;
+        
+        // دریافت تمام mappingهای فعال
+        $mappings = $wpdb->get_results(
+            "SELECT id FROM {$wpdb->prefix}inventory_sync_mapping WHERE sync_enabled = 1"
+        );
+        
+        if (empty($mappings)) {
+            wp_send_json_error('هیچ مرتبط‌سازی برای هماهنگ‌سازی وجود ندارد');
+        }
+        
+        $sync_manager = Inventory_Sync_Manager::get_instance();
+        $synced = 0;
+        $failed = 0;
+        
+        foreach ($mappings as $mapping) {
+            $result = $sync_manager->sync_inventory($mapping->id);
+            
+            if (is_wp_error($result)) {
+                $failed++;
+            } else {
+                $synced++;
+            }
+        }
+        
+        wp_send_json_success([
+            'synced' => $synced,
+            'failed' => $failed,
+            'total' => count($mappings)
+        ]);
     }
 }

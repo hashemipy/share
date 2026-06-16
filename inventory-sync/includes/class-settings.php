@@ -47,11 +47,25 @@ class Inventory_Sync_Settings {
     public static function get_sync_interval() {
         return get_option(self::OPTION_PREFIX . 'sync_interval', 300); // 5 minutes
     }
+
+    public static function get_current_site_role() {
+        return get_option(self::OPTION_PREFIX . 'current_site_role', 'site1'); // 'site1' or 'site2'
+    }
+
+    public static function is_site1() {
+        return self::get_current_site_role() === 'site1';
+    }
+
+    public static function is_site2() {
+        return self::get_current_site_role() === 'site2';
+    }
     
     public static function save_settings($data) {
         if (empty($data) || !is_array($data)) {
             return false;
         }
+        
+        update_option(self::OPTION_PREFIX . 'current_site_role', sanitize_text_field($data['current_site_role'] ?? 'site1'));
         
         update_option(self::OPTION_PREFIX . 'site1_name', sanitize_text_field($data['site1_name'] ?? ''));
         update_option(self::OPTION_PREFIX . 'site1_url', esc_url_raw($data['site1_url'] ?? ''));

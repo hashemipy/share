@@ -5,7 +5,7 @@ class Inventory_Sync_API {
     private $site_url;
     private $consumer_key;
     private $consumer_secret;
-    private $timeout = 30;
+    private $timeout = 15; // تقلیل تایم‌اوت به 15 ثانیه برای جلوگیری از 502/503/504
     private $retry_count = 3;
     
     public function __construct($site_url, $consumer_key, $consumer_secret) {
@@ -234,7 +234,7 @@ class Inventory_Sync_API {
     }
     
     /**
-     * ارسال درخواست HTTP
+     * ارسال درخواست HTTP با بهبود شده Retry Logic و Error Handling
      */
     private function request($method, $endpoint, $data = [], $params = []) {
         $url = $this->site_url . $endpoint;
@@ -253,7 +253,9 @@ class Inventory_Sync_API {
                 'Content-Type' => 'application/json',
                 'User-Agent' => 'Inventory-Sync/' . INVENTORY_SYNC_VERSION
             ],
-            'sslverify' => apply_filters('inventory_sync_verify_ssl', true)
+            'sslverify' => apply_filters('inventory_sync_verify_ssl', true),
+            'blocking' => true, // اطمینان دهید که request blocking است
+            'redirection' => 3 // محدود کردن redirects
         ];
         
         if (!empty($data)) {
@@ -261,27 +263,67 @@ class Inventory_Sync_API {
         }
         
         $attempt = 0;
+        $last_error = null;
+        
         while ($attempt < $this->retry_count) {
             $response = wp_remote_request($url, $args);
             
-            if (!is_wp_error($response)) {
-                $status_code = wp_remote_retrieve_response_code($response);
+            if (is_wp_error($response)) {
+                $last_error = $response;
+                $error_code = $response->get_error_code();
                 
-                if (in_array($status_code, [200, 201, 204])) {
-                    $body = wp_remote_retrieve_body($response);
-                    return json_decode($body, true);
-                } elseif (in_array($status_code, [400, 401, 403, 404])) {
-                    // Don't retry on client errors
-                    return new WP_Error('api_error', wp_remote_retrieve_body($response), ['status' => $status_code]);
+                // اگر timeout یا connection error باشد، دوباره تلاش کن
+                if (in_array($error_code, ['http_request_failed', 'cURL error 28', 'cURL error 7'])) {
+                    $attempt++;
+                    if ($attempt < $this->retry_count) {
+                        // Exponential backoff: 1s, 2s, 4s
+                        sleep(pow(2, $attempt - 1));
+                        continue;
+                    }
+                }
+                
+                // برای سایر errors، بلافاصله خروج کن
+                return $response;
+            }
+            
+            $status_code = wp_remote_retrieve_response_code($response);
+            
+            // موفقیت
+            if (in_array($status_code, [200, 201, 204])) {
+                $body = wp_remote_retrieve_body($response);
+                return json_decode($body, true);
+            }
+            
+            // Client errors - بدون دوباره تلاش
+            if (in_array($status_code, [400, 401, 403, 404])) {
+                $body = wp_remote_retrieve_body($response);
+                return new WP_Error('api_error', $body, ['status' => $status_code]);
+            }
+            
+            // Server errors - دوباره تلاش
+            if (in_array($status_code, [429, 500, 502, 503, 504])) {
+                $last_error = new WP_Error('server_error', 'Server Error: ' . $status_code, ['status' => $status_code]);
+                $attempt++;
+                
+                if ($attempt < $this->retry_count) {
+                    // برای rate limiting، بیشتر منتظر بمانید
+                    if ($status_code === 429) {
+                        sleep(pow(2, $attempt)); // 2s, 4s, 8s
+                    } else {
+                        sleep(pow(2, $attempt - 1)); // 1s, 2s, 4s
+                    }
+                    continue;
                 }
             }
             
-            $attempt++;
-            if ($attempt < $this->retry_count) {
-                sleep(pow(2, $attempt)); // Exponential backoff
-            }
+            break;
         }
         
-        return is_wp_error($response) ? $response : new WP_Error('api_timeout', 'درخواست بیش از حد زمان طول کشید');
+        // اگر تمام تلاش‌ها ناموفق بودند
+        if ($last_error) {
+            return $last_error;
+        }
+        
+        return new WP_Error('api_failed', 'API request failed after ' . $this->retry_count . ' attempts');
     }
 }

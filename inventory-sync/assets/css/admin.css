@@ -655,3 +655,91 @@
         font-size: 16px;
     }
 }
+
+/* Enhanced Mapping Tab Styles */
+.site-role-selector {
+    background: #f0f5ff !important;
+    border-left: 4px solid #2271b1 !important;
+}
+
+.site-role-selector h3 {
+    color: #2271b1;
+    margin-bottom: 15px;
+}
+
+.site-role-selector label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.site-role-selector input[type="radio"] {
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+}
+
+/* Button Styles */
+.button.button-success {
+    background: #46b450;
+    color: white;
+    border-color: #46b450;
+}
+
+.button.button-success:hover {
+    background: #3ba340;
+}
+
+/* Selected Mapping Display */
+#selected-mapping {
+    background: white;
+    border: 2px solid #2271b1;
+    border-radius: 6px;
+    padding: 15px;
+}
+
+#selected-mapping strong {
+    color: #2271b1;
+    font-size: 14px;
+}
+
+#selected-mapping small {
+    display: block;
+    color: #666;
+    font-size: 12px;
+    margin-top: 3px;
+}
+
+/* Existing Mappings Table */
+.existing-mappings tr:nth-child(odd) {
+    background: #fafafa;
+}
+
+.existing-mappings tr:hover {
+    background: #f0f5ff;
+}
+
+.delete-mapping-btn {
+    background: #d63638;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    font-size: 12px;
+}
+
+.delete-mapping-btn:hover {
+    background: #c1222f;
+}
+
+/* Product Items in Mapping */
+.product-item[data-site="site1"]:hover {
+    border-color: #d63638 !important;
+    background: #fee !important;
+}
+
+.product-item[data-site="site2"]:hover {
+    border-color: #46b450 !important;
+    background: #efe !important;
+}

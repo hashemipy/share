@@ -39,6 +39,33 @@ if (!defined('ABSPATH')) exit;
             <div class="settings-container">
                 <h2><?php esc_html_e('تنظیمات سایت‌ها', 'inventory-sync'); ?></h2>
                 
+                <!-- Site Role Selection -->
+                <div class="site-role-selector" style="background: #f5f5f5; padding: 20px; border-radius: 5px; margin-bottom: 20px; border-left: 4px solid #2271b1;">
+                    <h3><?php esc_html_e('🎯 نقش این سایت', 'inventory-sync'); ?></h3>
+                    <p style="margin-bottom: 15px; color: #555;">
+                        <?php esc_html_e('مشخص کنید که این سایت نقش «سایت 1» (مبدا) دارد یا «سایت 2» (مقصد):', 'inventory-sync'); ?>
+                    </p>
+                    <div class="form-group" style="display: flex; gap: 30px;">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="radio" id="current_site_role_site1" name="current_site_role" value="site1" 
+                                   <?php checked(Inventory_Sync_Settings::get_current_site_role(), 'site1'); ?>>
+                            <span style="font-weight: bold; color: #d63638;">
+                                <?php esc_html_e('📤 سایت 1 (مبدا - منتقل‌کننده)', 'inventory-sync'); ?>
+                            </span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="radio" id="current_site_role_site2" name="current_site_role" value="site2" 
+                                   <?php checked(Inventory_Sync_Settings::get_current_site_role(), 'site2'); ?>>
+                            <span style="font-weight: bold; color: #00a32a;">
+                                <?php esc_html_e('📥 سایت 2 (مقصد - دریافت‌کننده)', 'inventory-sync'); ?>
+                            </span>
+                        </label>
+                    </div>
+                    <p style="margin-top: 10px; font-size: 12px; color: #666;">
+                        <?php esc_html_e('⚠️ تنها سایت 1 دارای دسترسی به مرتبط‌سازی و هماهنگ‌سازی است', 'inventory-sync'); ?>
+                    </p>
+                </div>
+                
                 <div class="settings-grid">
                     <!-- Site 1 -->
                     <div class="site-settings">
@@ -184,29 +211,90 @@ if (!defined('ABSPATH')) exit;
         <div id="mapping" class="tab-pane">
             <h2><?php esc_html_e('مرتبط‌سازی محصولات', 'inventory-sync'); ?></h2>
             <p class="description">
-                <?php esc_html_e('محصولات سایت 1 و 2 را در کنار هم ببینید و آنها را مرتبط کنید', 'inventory-sync'); ?>
+                <?php esc_html_e('محصولات سایت 1 و 2 را انتخاب کنید و با هم مرتبط کنید تا موجودی‌های آن‌ها هماهنگ‌سازی شوند', 'inventory-sync'); ?>
             </p>
             
-            <div class="mapping-container">
-                <div class="mapping-column">
-                    <h3><?php esc_html_e('سایت 1 - محصولات', 'inventory-sync'); ?></h3>
-                    <div class="products-list site1-products">
-                        <p><?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?></p>
+            <div class="mapping-container" style="display: flex; gap: 20px;">
+                <!-- Site 1 Products Column -->
+                <div class="mapping-column site1-column" style="flex: 1; border: 1px solid #ddd; padding: 15px; border-radius: 5px;">
+                    <h3><?php esc_html_e('📤 سایت 1 - محصولات (انتخاب کنید)', 'inventory-sync'); ?></h3>
+                    <input type="text" id="search-site1" class="form-control" placeholder="<?php esc_html_e('جستجو در محصولات سایت 1...', 'inventory-sync'); ?>" style="margin-bottom: 10px;">
+                    <div class="products-list site1-products" style="max-height: 500px; overflow-y: auto; border: 1px solid #eee; border-radius: 3px; padding: 10px;">
+                        <p><?php esc_html_e('درحال بارگذاری محصولات...', 'inventory-sync'); ?></p>
                     </div>
                 </div>
                 
-                <div class="mapping-column">
-                    <h3><?php esc_html_e('سایت 2 - محصولات', 'inventory-sync'); ?></h3>
-                    <div class="products-list site2-products">
-                        <p><?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?></p>
+                <!-- Connector -->
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="writing-mode: vertical-rl; transform: rotate(180deg); font-weight: bold; color: #2271b1;">↔</div>
+                </div>
+                
+                <!-- Site 2 Products Column -->
+                <div class="mapping-column site2-column" style="flex: 1; border: 1px solid #ddd; padding: 15px; border-radius: 5px;">
+                    <h3><?php esc_html_e('📥 سایت 2 - محصولات (انتخاب کنید)', 'inventory-sync'); ?></h3>
+                    <input type="text" id="search-site2" class="form-control" placeholder="<?php esc_html_e('جستجو در محصولات سایت 2...', 'inventory-sync'); ?>" style="margin-bottom: 10px;">
+                    <div class="products-list site2-products" style="max-height: 500px; overflow-y: auto; border: 1px solid #eee; border-radius: 3px; padding: 10px;">
+                        <p><?php esc_html_e('درحال بارگذاری محصولات...', 'inventory-sync'); ?></p>
                     </div>
                 </div>
             </div>
             
-            <div class="mapping-actions">
-                <button class="button button-primary sync-all-btn">
-                    <?php esc_html_e('⚡ هماهنگ‌سازی همه موجودی‌ها', 'inventory-sync'); ?>
-                </button>
+            <!-- Mapping Controls -->
+            <div class="mapping-actions" style="margin-top: 20px; padding: 15px; background: #f5f5f5; border-radius: 5px;">
+                <div id="selected-mapping" style="margin-bottom: 15px; display: none;">
+                    <p style="margin: 0 0 10px 0;">
+                        <strong><?php esc_html_e('انتخاب شده:', 'inventory-sync'); ?></strong>
+                    </p>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <div style="flex: 1;">
+                            <strong id="selected-site1-name">-</strong><br>
+                            <small id="selected-site1-sku">SKU: -</small><br>
+                            <small id="selected-site1-stock">موجودی: -</small>
+                        </div>
+                        <span style="font-size: 24px; color: #2271b1;">⟷</span>
+                        <div style="flex: 1;">
+                            <strong id="selected-site2-name">-</strong><br>
+                            <small id="selected-site2-sku">SKU: -</small><br>
+                            <small id="selected-site2-stock">موجودی: -</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div style="display: flex; gap: 10px;">
+                    <button class="button button-primary" id="create-mapping-btn" disabled>
+                        <?php esc_html_e('🔗 ایجاد ارتباط', 'inventory-sync'); ?>
+                    </button>
+                    <button class="button button-secondary" id="clear-selection-btn">
+                        <?php esc_html_e('❌ حذف انتخاب', 'inventory-sync'); ?>
+                    </button>
+                    <button class="button button-success" id="manual-sync-btn" style="margin-left: auto;">
+                        <?php esc_html_e('⚡ هماهنگ‌سازی همه مرتبط‌سازی‌ها', 'inventory-sync'); ?>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Existing Mappings List -->
+            <div style="margin-top: 30px;">
+                <h3><?php esc_html_e('📋 محصولات مرتبط شده', 'inventory-sync'); ?></h3>
+                <table class="widefat striped">
+                    <thead>
+                        <tr>
+                            <th><?php esc_html_e('محصول سایت 1', 'inventory-sync'); ?></th>
+                            <th><?php esc_html_e('SKU', 'inventory-sync'); ?></th>
+                            <th><?php esc_html_e('محصول سایت 2', 'inventory-sync'); ?></th>
+                            <th><?php esc_html_e('SKU', 'inventory-sync'); ?></th>
+                            <th><?php esc_html_e('وضعیت', 'inventory-sync'); ?></th>
+                            <th><?php esc_html_e('عملیات', 'inventory-sync'); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody class="existing-mappings">
+                        <tr>
+                            <td colspan="6" class="text-center">
+                                <?php esc_html_e('درحال بارگذاری...', 'inventory-sync'); ?>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
         
