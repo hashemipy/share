@@ -19,6 +19,7 @@ class Inventory_Sync_Admin {
         add_action('wp_ajax_inventory_sync_get_products', [$this, 'ajax_get_products']);
         add_action('wp_ajax_inventory_sync_save_mapping', [$this, 'ajax_save_mapping']);
         add_action('wp_ajax_inventory_sync_sync_inventory', [$this, 'ajax_sync_inventory']);
+        add_action('wp_ajax_inventory_sync_sync_all_mappings', [$this, 'ajax_sync_all_mappings']);
         add_action('wp_ajax_inventory_sync_transfer_products', [$this, 'ajax_transfer_products']);
         add_action('wp_ajax_inventory_sync_get_logs', [$this, 'ajax_get_logs']);
         add_action('wp_ajax_inventory_sync_get_transferred_products', [$this, 'ajax_get_transferred_products']);
@@ -182,6 +183,45 @@ class Inventory_Sync_Admin {
             wp_send_json_error('شناسه‌های محصول مورد نیاز است');
         }
         
+        // بررسی اینکه این mapping قبلاً وجود داشته یا نه
+        $existing = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}inventory_sync_mapping 
+                 WHERE site1_product_id = %d AND site2_product_id = %d",
+                $site1_id,
+                $site2_id
+            )
+        );
+        
+        if ($existing) {
+            wp_send_json_error('این نقشه‌برداری قبلاً موجود است');
+        }
+        
+        // بررسی اینکه این محصول‌ها در mappingهای دیگر نیست
+        $site1_used = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}inventory_sync_mapping 
+                 WHERE site1_product_id = %d",
+                $site1_id
+            )
+        );
+        
+        $site2_used = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}inventory_sync_mapping 
+                 WHERE site2_product_id = %d",
+                $site2_id
+            )
+        );
+        
+        if ($site1_used) {
+            wp_send_json_error('محصول سایت 1 قبلاً با محصول دیگری مرتبط است');
+        }
+        
+        if ($site2_used) {
+            wp_send_json_error('محصول سایت 2 قبلاً با محصول دیگری مرتبط است');
+        }
+        
         $result = $wpdb->insert(
             $wpdb->prefix . 'inventory_sync_mapping',
             [
@@ -194,7 +234,7 @@ class Inventory_Sync_Admin {
         );
         
         if ($result) {
-            wp_send_json_success('نقشه‌برداری ذخیره شد');
+            wp_send_json_success('نقشه‌برداری ذخیره شد ✓');
         } else {
             wp_send_json_error('خطا در ذخیره');
         }
@@ -221,6 +261,44 @@ class Inventory_Sync_Admin {
         }
         
         wp_send_json_success('موجودی هماهنگ شد');
+    }
+    
+    public function ajax_sync_all_mappings() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('عدم دسترسی');
+        }
+        
+        global $wpdb;
+        
+        // دریافت تمام نقشه‌برداری‌های فعال
+        $mappings = $wpdb->get_results(
+            "SELECT id FROM {$wpdb->prefix}inventory_sync_mapping WHERE sync_enabled = 1"
+        );
+        
+        if (empty($mappings)) {
+            wp_send_json_error('هیچ نقشه‌برداری فعالی پیدا نشد');
+        }
+        
+        $sync_manager = Inventory_Sync_Manager::get_instance();
+        $synced = 0;
+        $failed = 0;
+        
+        foreach ($mappings as $mapping) {
+            $result = $sync_manager->sync_inventory($mapping->id);
+            
+            if (is_wp_error($result)) {
+                $failed++;
+            } else {
+                $synced++;
+            }
+        }
+        
+        wp_send_json_success([
+            'synced' => $synced,
+            'failed' => $failed
+        ]);
     }
     
     public function ajax_transfer_products() {

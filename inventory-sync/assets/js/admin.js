@@ -6,6 +6,8 @@
     'use strict';
     
     const app = {
+        selectedProductForMapping: null,
+        
         init: function() {
             this.bindEvents();
             this.loadInitialData();
@@ -181,9 +183,17 @@
             
             let html = '';
             products.forEach(product => {
+                const productId = product.id;
+                const mappingId = `mapping-${site}-${productId}`;
+                
                 html += `
-                    <div class="product-item" data-site="${site}" data-id="${product.id}">
-                        <div class="product-name">${product.name}</div>
+                    <div class="product-item" data-site="${site}" data-id="${productId}" data-sku="${product.sku || ''}">
+                        <div class="product-header">
+                            <div class="product-name">${product.name}</div>
+                            <button type="button" class="btn-map-product" data-product-id="${productId}" data-site="${site}" title="انتخاب برای مرتبط‌سازی">
+                                ↔️
+                            </button>
+                        </div>
                         <div class="product-sku">SKU: ${product.sku || 'N/A'}</div>
                         <div class="product-stock">📦 موجودی: ${product.stock_quantity || 0}</div>
                     </div>
@@ -191,6 +201,112 @@
             });
             
             $container.html(html);
+            
+            // بند کردن رویدادهای انتخاب
+            $container.find('.btn-map-product').off('click').on('click', this.openMappingModal.bind(this));
+        },
+        
+        openMappingModal: function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const $btn = $(e.target).closest('.btn-map-product');
+            const site = $btn.attr('data-site');
+            const productId = $btn.attr('data-product-id');
+            const $productItem = $btn.closest('.product-item');
+            const productName = $productItem.find('.product-name').text();
+            const productSku = $productItem.attr('data-sku');
+            
+            // ذخیره اطلاعات موقت
+            this.selectedProductForMapping = {
+                site: site,
+                productId: productId,
+                productName: productName,
+                productSku: productSku
+            };
+            
+            // اگر این site1 است، نمایش site2 محصولات
+            // اگر این site2 است، نمایش site1 محصولات
+            const targetSite = site === 'site1' ? 'site2' : 'site1';
+            const $targetContainer = targetSite === 'site1' ? 
+                $('.site1-products') : $('.site2-products');
+            
+            // تغییر استایل برای نشان دادن حالت انتخاب
+            $('.product-item').removeClass('selecting-for-mapping');
+            $productItem.addClass('selecting-for-mapping');
+            
+            // هشدار کاربر
+            alert(`${productName} را انتخاب کردید.\nحالا یک محصول از ${targetSite === 'site1' ? 'سایت 1' : 'سایت 2'} را انتخاب کنید تا آن‌ها را مرتبط کنید.`);
+            
+            // غیر فعال کردن دکمه‌های دیگر سایت
+            const $otherContainer = targetSite === 'site1' ? 
+                $('.site1-products') : $('.site2-products');
+            
+            // هنگامی که کاربر محصول از سایت دیگری انتخاب می‌کند
+            const self = this;
+            $otherContainer.find('.product-item').off('click').on('click', function() {
+                if (self.selectedProductForMapping) {
+                    const $selected = $(this);
+                    const selectedProductId = $selected.attr('data-id');
+                    const selectedProductName = $selected.find('.product-name').text();
+                    
+                    // مرتبط‌سازی دو محصول
+                    self.createMapping(
+                        self.selectedProductForMapping.site,
+                        self.selectedProductForMapping.productId,
+                        targetSite,
+                        selectedProductId,
+                        self.selectedProductForMapping.productSku,
+                        $selected.attr('data-sku')
+                    );
+                    
+                    // پاک کردن انتخاب
+                    $('.product-item').removeClass('selecting-for-mapping');
+                    self.selectedProductForMapping = null;
+                }
+            });
+        },
+        
+        createMapping: function(site1, site1Id, site2, site2Id, site1Sku, site2Sku) {
+            // اگر کاربر برعکس انتخاب کرده باشد
+            if (site1 === 'site2') {
+                const temp = site1;
+                site1 = site2;
+                site2 = temp;
+                
+                const tempId = site1Id;
+                site1Id = site2Id;
+                site2Id = tempId;
+                
+                const tempSku = site1Sku;
+                site1Sku = site2Sku;
+                site2Sku = tempSku;
+            }
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_save_mapping',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    site1_id: site1Id,
+                    site2_id: site2Id,
+                    site1_sku: site1Sku,
+                    site2_sku: site2Sku
+                },
+                success: (response) => {
+                    if (response.success) {
+                        alert('✓ ' + response.data + ' (محصولات اکنون هماهنگ می‌شوند)');
+                        this.loadProducts('site1');
+                        this.loadProducts('site2');
+                    } else {
+                        alert('✗ ' + (response.data || inventorySyncData.i18n.error));
+                    }
+                },
+                error: () => {
+                    alert('✗ ' + inventorySyncData.i18n.error);
+                }
+            });
         },
         
         selectProduct: function(e) {
@@ -201,7 +317,7 @@
         syncAllInventory: function(e) {
             e.preventDefault();
             
-            if (!confirm('آیا می‌خواهید تمام موجودی‌ها را هماهنگ کنید؟')) {
+            if (!confirm('آیا می‌خواهید تمام موجودی‌های mapped را هماهنگ کنید؟')) {
                 return;
             }
             
@@ -210,13 +326,28 @@
             
             $btn.attr('disabled', true).text(inventorySyncData.i18n.syncing);
             
-            // Here you would fetch all mappings and sync them
-            // For now, just show a message
-            
-            setTimeout(() => {
-                alert('✓ هماهنگ‌سازی کامل شد!');
-                $btn.attr('disabled', false).text(originalText);
-            }, 1000);
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_sync_all_mappings',
+                    _ajax_nonce: inventorySyncData.nonce
+                },
+                success: (response) => {
+                    if (response.success) {
+                        const { synced, failed } = response.data;
+                        alert(`✓ هماهنگ‌سازی کامل شد!\nموفق: ${synced}\nناموفق: ${failed}`);
+                    } else {
+                        alert('✗ ' + response.data);
+                    }
+                },
+                error: () => {
+                    alert('✗ ' + inventorySyncData.i18n.error);
+                },
+                complete: () => {
+                    $btn.attr('disabled', false).text(originalText);
+                }
+            });
         },
         
         // === Transfer Management ===

@@ -34,7 +34,7 @@ class Inventory_Sync_Manager {
      * ⭐ بسیار مهم: این متد را هر بار بعد از transfer محصول فراخوانی کنید
      * تا اطلاعات درست برای محصول بعدی استفاده شود
      */
-    private function clear_cache() {
+    public function clear_cache() {
         $this->site2_attributes_cache = null;
         // اگر cache‌های دیگری هم دارید، آن‌ها را نیز اضافه کنید
     }
