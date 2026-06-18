@@ -19,6 +19,10 @@ class Inventory_Sync_Plugin {
         require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-category-attribute-sync.php';
         require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-sync-manager.php';
         
+        // ✨ جفت‌سازی دو طرفه محصولات (فیچر جدید)
+        require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-product-pairing.php';
+        require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-bidirectional-sync.php';
+        
         // Admin
         if (is_admin()) {
             require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-admin.php';
@@ -30,6 +34,10 @@ class Inventory_Sync_Plugin {
         // بدون این، sync خودکار موجودی هرگز اجرا نمی‌شد.
         Inventory_Sync_Manager::get_instance();
         
+        // ✨ پاک کن Product Pairing + Bidirectional Sync
+        Inventory_Sync_Product_Pairing::get_instance();
+        Inventory_Sync_Bidirectional::get_instance();
+        
         // Hooks
         add_action('woocommerce_reduce_order_stock', [$this, 'on_product_sold']);
         add_action('inventory_sync_cron_hook', [$this, 'run_scheduled_sync']);
@@ -37,6 +45,11 @@ class Inventory_Sync_Plugin {
         // Cron
         if (!wp_next_scheduled('inventory_sync_cron_hook')) {
             wp_schedule_event(time(), 'inventory_sync_interval', 'inventory_sync_cron_hook');
+        }
+        
+        // Cron برای sync جفت‌ها
+        if (!wp_next_scheduled('inventory_sync_pair_cron')) {
+            wp_schedule_event(time(), 'inventory_sync_pair_interval', 'inventory_sync_pair_cron');
         }
         
         // Register cron interval
@@ -81,6 +94,12 @@ class Inventory_Sync_Plugin {
         $schedules['inventory_sync_interval'] = [
             'interval' => $interval,
             'display' => sprintf(__('هر %d دقیقه', 'inventory-sync'), intval($interval / 60))
+        ];
+        
+        // ✨ interval برای sync جفت‌ها (هر 5 دقیقه)
+        $schedules['inventory_sync_pair_interval'] = [
+            'interval' => 300,
+            'display' => __('هر 5 دقیقه', 'inventory-sync')
         ];
         
         return $schedules;

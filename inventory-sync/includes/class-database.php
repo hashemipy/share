@@ -11,6 +11,7 @@ class Inventory_Sync_Database {
         $table3 = $wpdb->prefix . 'inventory_sync_category_mapping';
         $table4 = $wpdb->prefix . 'inventory_sync_attribute_mapping';
         $table5 = $wpdb->prefix . 'inventory_sync_products_transferred';
+        $table6 = $wpdb->prefix . 'inventory_sync_product_pairs';
         
         $sql1 = "CREATE TABLE IF NOT EXISTS $table1 (
             id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -92,12 +93,35 @@ class Inventory_Sync_Database {
             INDEX idx_status (transfer_status)
         ) $charset_collate;";
         
+        $sql6 = "CREATE TABLE IF NOT EXISTS $table6 (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            site1_product_id BIGINT(20) UNSIGNED NOT NULL,
+            site2_product_id BIGINT(20) UNSIGNED NOT NULL,
+            site1_product_name VARCHAR(255),
+            site2_product_name VARCHAR(255),
+            site1_sku VARCHAR(255),
+            site2_sku VARCHAR(255),
+            sync_direction ENUM('bidirectional', 'site1_to_site2', 'site2_to_site1') DEFAULT 'bidirectional',
+            is_active BOOLEAN DEFAULT 1,
+            last_sync DATETIME,
+            last_sync_direction VARCHAR(20) COMMENT 'آخرین جهت sync (site1, site2)',
+            sync_count INT DEFAULT 0,
+            error_message LONGTEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY unique_pair (site1_product_id, site2_product_id),
+            INDEX idx_active (is_active),
+            INDEX idx_created (created_at),
+            INDEX idx_last_sync (last_sync)
+        ) $charset_collate;";
+        
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         dbDelta($sql1);
         dbDelta($sql2);
         dbDelta($sql3);
         dbDelta($sql4);
         dbDelta($sql5);
+        dbDelta($sql6);
     }
     
     public static function insert_log($product_id, $product_name, $action, $source_site, $target_site, $old_value, $new_value, $status, $error = '') {
@@ -252,5 +276,153 @@ class Inventory_Sync_Database {
         );
         
         return !empty($result);
+    }
+    
+    // ============ روش‌های جفت‌سازی محصولات ============
+    
+    public static function create_product_pair($site1_id, $site2_id, $site1_name, $site2_name, $site1_sku = '', $site2_sku = '', $sync_direction = 'bidirectional') {
+        global $wpdb;
+        
+        return $wpdb->insert(
+            $wpdb->prefix . 'inventory_sync_product_pairs',
+            [
+                'site1_product_id' => $site1_id,
+                'site2_product_id' => $site2_id,
+                'site1_product_name' => $site1_name,
+                'site2_product_name' => $site2_name,
+                'site1_sku' => $site1_sku,
+                'site2_sku' => $site2_sku,
+                'sync_direction' => $sync_direction,
+                'is_active' => 1
+            ],
+            ['%d', '%d', '%s', '%s', '%s', '%s', '%s', '%d']
+        );
+    }
+    
+    public static function get_product_pair($pair_id) {
+        global $wpdb;
+        
+        return $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}inventory_sync_product_pairs WHERE id = %d",
+                $pair_id
+            )
+        );
+    }
+    
+    public static function get_product_pair_by_ids($site1_id, $site2_id) {
+        global $wpdb;
+        
+        return $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}inventory_sync_product_pairs WHERE site1_product_id = %d AND site2_product_id = %d",
+                $site1_id,
+                $site2_id
+            )
+        );
+    }
+    
+    public static function get_pair_by_site_product($product_id, $site = 'site1') {
+        global $wpdb;
+        
+        if ($site === 'site1') {
+            return $wpdb->get_row(
+                $wpdb->prepare(
+                    "SELECT * FROM {$wpdb->prefix}inventory_sync_product_pairs WHERE site1_product_id = %d AND is_active = 1",
+                    $product_id
+                )
+            );
+        } else {
+            return $wpdb->get_row(
+                $wpdb->prepare(
+                    "SELECT * FROM {$wpdb->prefix}inventory_sync_product_pairs WHERE site2_product_id = %d AND is_active = 1",
+                    $product_id
+                )
+            );
+        }
+    }
+    
+    public static function get_all_active_pairs($limit = -1, $offset = 0) {
+        global $wpdb;
+        
+        if ($limit === -1) {
+            return $wpdb->get_results(
+                "SELECT * FROM {$wpdb->prefix}inventory_sync_product_pairs WHERE is_active = 1 ORDER BY created_at DESC"
+            );
+        }
+        
+        return $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}inventory_sync_product_pairs WHERE is_active = 1 ORDER BY created_at DESC LIMIT %d OFFSET %d",
+                $limit,
+                $offset
+            )
+        );
+    }
+    
+    public static function deactivate_pair($pair_id) {
+        global $wpdb;
+        
+        return $wpdb->update(
+            $wpdb->prefix . 'inventory_sync_product_pairs',
+            ['is_active' => 0],
+            ['id' => $pair_id]
+        );
+    }
+    
+    public static function delete_pair($pair_id) {
+        global $wpdb;
+        
+        return $wpdb->delete(
+            $wpdb->prefix . 'inventory_sync_product_pairs',
+            ['id' => $pair_id]
+        );
+    }
+    
+    public static function update_pair_last_sync($pair_id, $direction = '') {
+        global $wpdb;
+        
+        return $wpdb->update(
+            $wpdb->prefix . 'inventory_sync_product_pairs',
+            [
+                'last_sync' => current_time('mysql'),
+                'last_sync_direction' => $direction,
+                'sync_count' => new \WP_Query_Expression('sync_count + 1'),
+                'error_message' => ''
+            ],
+            ['id' => $pair_id],
+            ['%s', '%s', null, '%s']
+        );
+    }
+    
+    public static function update_pair_sync_count($pair_id) {
+        global $wpdb;
+        
+        $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$wpdb->prefix}inventory_sync_product_pairs SET sync_count = sync_count + 1 WHERE id = %d",
+                $pair_id
+            )
+        );
+    }
+    
+    public static function update_pair_error($pair_id, $error_message) {
+        global $wpdb;
+        
+        return $wpdb->update(
+            $wpdb->prefix . 'inventory_sync_product_pairs',
+            ['error_message' => $error_message],
+            ['id' => $pair_id]
+        );
+    }
+    
+    public static function get_pairs_to_sync() {
+        global $wpdb;
+        
+        return $wpdb->get_results(
+            "SELECT * FROM {$wpdb->prefix}inventory_sync_product_pairs 
+             WHERE is_active = 1 
+             ORDER BY last_sync ASC LIMIT 50"
+        );
     }
 }

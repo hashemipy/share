@@ -18,6 +18,9 @@ if (!defined('ABSPATH')) exit;
         <a href="#settings" class="nav-tab nav-tab-active" data-tab="settings">
             <?php esc_html_e('⚙️ تنظیمات', 'inventory-sync'); ?>
         </a>
+        <a href="#pairing" class="nav-tab" data-tab="pairing">
+            <?php esc_html_e('💑 جفت‌سازی محصولات', 'inventory-sync'); ?>
+        </a>
         <a href="#mapping" class="nav-tab" data-tab="mapping">
             <?php esc_html_e('🔗 مرتبط‌سازی محصولات', 'inventory-sync'); ?>
         </a>
@@ -178,6 +181,11 @@ if (!defined('ABSPATH')) exit;
                     <span class="status-message"></span>
                 </div>
             </div>
+        </div>
+        
+        <!-- ✨ Pairing Tab -->
+        <div id="pairing" class="tab-pane">
+            <?php include INVENTORY_SYNC_PLUGIN_DIR . 'admin/product-pairing.php'; ?>
         </div>
         
         <!-- Mapping Tab -->

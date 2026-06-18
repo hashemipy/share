@@ -1,0 +1,277 @@
+/* Product Pairing Styles */
+
+.inventory-sync-tabs {
+    display: flex;
+    gap: 10px;
+    margin: 20px 0;
+    border-bottom: 2px solid #ccc;
+    flex-wrap: wrap;
+}
+
+.tab-button {
+    padding: 10px 20px;
+    background: #f0f0f0;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    border-bottom: 3px solid transparent;
+    transition: all 0.3s ease;
+}
+
+.tab-button:hover {
+    background: #e0e0e0;
+}
+
+.tab-button.active {
+    background: #fff;
+    border-bottom-color: #0073aa;
+    color: #0073aa;
+}
+
+.tab-content {
+    display: none;
+    animation: fadeIn 0.3s ease;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+/* Product Search Styles */
+.product-search {
+    width: 100%;
+    max-width: 400px;
+    padding: 10px;
+    font-size: 14px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.product-search:focus {
+    outline: none;
+    border-color: #0073aa;
+    box-shadow: 0 0 5px rgba(0, 115, 170, 0.3);
+}
+
+.product-results {
+    border: 1px solid #ddd;
+    border-top: none;
+    max-height: 250px;
+    overflow-y: auto;
+    display: none;
+    position: absolute;
+    background: #fff;
+    width: 100%;
+    max-width: 400px;
+    z-index: 1000;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.product-results.active {
+    display: block;
+}
+
+.product-item {
+    padding: 12px 15px;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.product-item:hover {
+    background: #f9f9f9;
+}
+
+.product-item:last-child {
+    border-bottom: none;
+}
+
+.product-item strong {
+    display: block;
+    margin-bottom: 4px;
+    color: #333;
+}
+
+.product-item-info {
+    font-size: 12px;
+    color: #999;
+}
+
+/* Status Messages */
+#create-pair-status {
+    margin-left: 20px;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.status-success {
+    color: #008a20;
+}
+
+.status-error {
+    color: #d32f2f;
+}
+
+/* Pair Actions */
+.pair-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.pair-actions button {
+    padding: 6px 12px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.pair-status-badge {
+    display: inline-block;
+    padding: 6px 10px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.status-active {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-inactive {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+/* Tables */
+#pairs-table,
+#logs-table {
+    width: 100%;
+    margin-top: 20px;
+}
+
+#pairs-table thead,
+#logs-table thead {
+    background: #f5f5f5;
+}
+
+#pairs-table th,
+#logs-table th {
+    padding: 12px;
+    text-align: right;
+    font-weight: bold;
+    border-bottom: 2px solid #ddd;
+}
+
+#pairs-table td,
+#logs-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #eee;
+}
+
+#pairs-tbody tr:hover,
+#logs-tbody tr:hover {
+    background: #f9f9f9;
+}
+
+/* Buttons */
+.button {
+    transition: all 0.2s;
+}
+
+.button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.button:active {
+    transform: translateY(0);
+}
+
+/* Form Groups */
+.form-table tr {
+    vertical-align: middle;
+}
+
+.form-table td {
+    padding: 15px;
+}
+
+.form-table label {
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Select Dropdown */
+select {
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+select:focus {
+    outline: none;
+    border-color: #0073aa;
+    box-shadow: 0 0 5px rgba(0, 115, 170, 0.3);
+}
+
+/* Loading State */
+.loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .inventory-sync-tabs {
+        gap: 5px;
+    }
+    
+    .tab-button {
+        padding: 8px 12px;
+        font-size: 12px;
+    }
+    
+    .product-search {
+        max-width: 100%;
+    }
+    
+    .product-results {
+        max-width: 100%;
+    }
+    
+    .pair-actions {
+        flex-direction: column;
+    }
+    
+    .pair-actions button {
+        width: 100%;
+    }
+    
+    #pairs-table,
+    #logs-table {
+        font-size: 12px;
+    }
+    
+    #pairs-table th,
+    #logs-table th {
+        padding: 8px;
+    }
+    
+    #pairs-table td,
+    #logs-table td {
+        padding: 8px;
+    }
+}

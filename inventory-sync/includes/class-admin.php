@@ -22,6 +22,9 @@ class Inventory_Sync_Admin {
         add_action('wp_ajax_inventory_sync_transfer_products', [$this, 'ajax_transfer_products']);
         add_action('wp_ajax_inventory_sync_get_logs', [$this, 'ajax_get_logs']);
         add_action('wp_ajax_inventory_sync_get_transferred_products', [$this, 'ajax_get_transferred_products']);
+        
+        // ✨ جستجوی محصولات برای جفت‌سازی
+        add_action('wp_ajax_inventory_sync_search_products', [$this, 'ajax_search_products']);
     }
     
     public function add_menu() {
@@ -44,6 +47,14 @@ class Inventory_Sync_Admin {
         wp_enqueue_style(
             'inventory-sync-admin',
             INVENTORY_SYNC_PLUGIN_URL . 'assets/css/admin.css',
+            [],
+            INVENTORY_SYNC_VERSION
+        );
+        
+        // ✨ CSS برای جفت‌سازی محصولات
+        wp_enqueue_style(
+            'inventory-sync-pairing',
+            INVENTORY_SYNC_PLUGIN_URL . 'assets/css/pairing.css',
             [],
             INVENTORY_SYNC_VERSION
         );
@@ -281,5 +292,72 @@ class Inventory_Sync_Admin {
         $products = Inventory_Sync_Database::get_transferred_products($limit, $offset);
         
         wp_send_json_success($products);
+    }
+    
+    /**
+     * ✨ جستجوی محصولات برای جفت‌سازی
+     */
+    public function ajax_search_products() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('عدم دسترسی');
+        }
+        
+        $search = sanitize_text_field($_POST['search'] ?? '');
+        $site = sanitize_text_field($_POST['site'] ?? '');
+        
+        if (empty($search) || empty($site)) {
+            wp_send_json_error('پارامترهای مورد نیاز');
+        }
+        
+        if ($site === 'site1') {
+            $api = new Inventory_Sync_API(
+                Inventory_Sync_Settings::get_site1_url(),
+                Inventory_Sync_Settings::get_site1_key(),
+                Inventory_Sync_Settings::get_site1_secret()
+            );
+        } else {
+            $api = new Inventory_Sync_API(
+                Inventory_Sync_Settings::get_site2_url(),
+                Inventory_Sync_Settings::get_site2_key(),
+                Inventory_Sync_Settings::get_site2_secret()
+            );
+        }
+        
+        // جستجوی محصول (فقط محصولات ساده)
+        $endpoint = '/wp-json/wc/v3/products';
+        $params = [
+            'search' => $search,
+            'per_page' => 20,
+            'type' => 'simple'
+        ];
+        
+        // استفاده از reflection برای دسترسی به متد request داخل API
+        $reflection = new ReflectionMethod($api, 'request');
+        $reflection->setAccessible(true);
+        
+        $products = $reflection->invoke($api, 'GET', $endpoint, [], $params);
+        
+        if (is_wp_error($products)) {
+            wp_send_json_error($products->get_error_message());
+        }
+        
+        // فیلتر کردن محصولات (فقط ساده)
+        $simple_products = [];
+        if (is_array($products)) {
+            foreach ($products as $product) {
+                if (($product['type'] ?? 'simple') === 'simple') {
+                    $simple_products[] = [
+                        'id' => $product['id'],
+                        'name' => $product['name'],
+                        'sku' => $product['sku'] ?? '',
+                        'stock' => isset($product['stock_quantity']) ? intval($product['stock_quantity']) : 0
+                    ];
+                }
+            }
+        }
+        
+        wp_send_json_success($simple_products);
     }
 }
