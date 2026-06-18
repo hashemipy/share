@@ -26,8 +26,7 @@ class Inventory_Sync_Admin {
         // ✅ AJAX handler جدید برای انتقال محصولات از صفحه جدید
         add_action('wp_ajax_inventory_sync_transfer_simple_products', [$this, 'ajax_transfer_simple_products']);
         
-        // ✅ AJAX handler برای دوباره تلاش دستی
-        add_action('wp_ajax_inventory_sync_manual_retry', [$this, 'ajax_manual_retry']);
+
     }
     
     public function add_menu() {
@@ -50,26 +49,6 @@ class Inventory_Sync_Admin {
             'inventory-sync-transfer',
             [$this, 'render_transfer_page']
         );
-        
-        // ✅ منوی جدید: مدیریت Mapping
-        add_submenu_page(
-            'inventory-sync',
-            'وضعیت نقشه‌برداری',
-            'وضعیت نقشه‌برداری',
-            'manage_woocommerce',
-            'inventory-sync-mapping',
-            [$this, 'render_mapping_page']
-        );
-        
-        // ✅ منوی جدید: بررسی دقیق Logs
-        add_submenu_page(
-            'inventory-sync',
-            'بررسی دقیق Logs',
-            'بررسی دقیق Logs',
-            'manage_woocommerce',
-            'inventory-sync-verification',
-            [$this, 'render_verification_page']
-        );
     }
     
     /**
@@ -83,27 +62,6 @@ class Inventory_Sync_Admin {
         include INVENTORY_SYNC_PLUGIN_DIR . 'admin/transfer-page.php';
     }
     
-    /**
-     * ✅ صفحه بررسی دقیق Logs
-     */
-    public function render_verification_page() {
-        if (!current_user_can('manage_woocommerce')) {
-            wp_die(__('دسترسی رد شد', 'inventory-sync'));
-        }
-        
-        include INVENTORY_SYNC_PLUGIN_DIR . 'admin/verification-logs.php';
-    }
-    
-    /**
-     * ✅ صفحه نمایش وضعیت Mapping
-     */
-    public function render_mapping_page() {
-        if (!current_user_can('manage_woocommerce')) {
-            wp_die(__('دسترسی رد شد', 'inventory-sync'));
-        }
-        
-        include INVENTORY_SYNC_PLUGIN_DIR . 'admin/mapping-page.php';
-    }
     
     public function enqueue_assets($hook_suffix) {
         if (strpos($hook_suffix, 'inventory-sync') === false) {
@@ -388,37 +346,5 @@ class Inventory_Sync_Admin {
         }
         
         wp_send_json_success($results);
-    }
-    
-    /**
-     * ✅ AJAX handler: دوباره تلاش دستی برای یک Mapping
-     */
-    public function ajax_manual_retry() {
-        check_ajax_referer('inventory_sync_nonce');
-        
-        if (!current_user_can('manage_woocommerce')) {
-            wp_send_json_error(['message' => 'عدم دسترسی']);
-        }
-        
-        $mapping_id = isset($_POST['mapping_id']) ? intval($_POST['mapping_id']) : 0;
-        
-        if (!$mapping_id) {
-            wp_send_json_error(['message' => 'Mapping ID مشخص نشده']);
-        }
-        
-        // ✅ Unlock کن (اگر قفل بود)
-        Inventory_Sync_Database::unlock_mapping($mapping_id, 'pending', 'دوباره تلاش دستی');
-        
-        // ✅ قرار بده برای sync فوری
-        wp_schedule_single_event(
-            time() + 1,
-            'inventory_sync_mapping',
-            [$mapping_id]
-        );
-        
-        wp_send_json_success([
-            'message' => 'درخواست دوباره تلاش ثبت شد',
-            'mapping_id' => $mapping_id
-        ]);
     }
 }

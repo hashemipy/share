@@ -24,22 +24,15 @@ class Inventory_Sync_Database {
             error_message LONGTEXT,
             retry_count INT DEFAULT 0,
             
-            -- ✅ ستون‌های جدید برای حل Ping-Pong Bug
-            last_change_site ENUM('site1', 'site2', 'unknown') DEFAULT 'unknown',
-            last_change_timestamp DATETIME,
-            last_change_stock INT DEFAULT 0,
-            
-            -- ✅ ستون‌های جدید برای Lock System (جلوگیری از Ping-Pong)
-            is_processing BOOLEAN DEFAULT 0,
-            lock_until DATETIME,
-            sync_status_message VARCHAR(255),
+            -- ✅ ستون‌های کلیدی: آخرین موجودی که sync شد
+            last_synced_stock_site1 INT DEFAULT 0,
+            last_synced_stock_site2 INT DEFAULT 0,
+            last_synced_timestamp DATETIME,
             
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             UNIQUE KEY unique_mapping (site1_product_id, site2_product_id),
             INDEX idx_status (sync_status),
-            INDEX idx_processing (is_processing),
-            INDEX idx_lock_until (lock_until),
             INDEX idx_created (created_at)
         ) $charset_collate;";
         
