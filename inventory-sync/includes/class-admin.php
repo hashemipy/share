@@ -22,6 +22,9 @@ class Inventory_Sync_Admin {
         add_action('wp_ajax_inventory_sync_transfer_products', [$this, 'ajax_transfer_products']);
         add_action('wp_ajax_inventory_sync_get_logs', [$this, 'ajax_get_logs']);
         add_action('wp_ajax_inventory_sync_get_transferred_products', [$this, 'ajax_get_transferred_products']);
+        
+        // ✅ AJAX handler جدید برای انتقال محصولات از صفحه جدید
+        add_action('wp_ajax_inventory_sync_transfer_simple_products', [$this, 'ajax_transfer_simple_products']);
     }
     
     public function add_menu() {
@@ -34,6 +37,27 @@ class Inventory_Sync_Admin {
             'dashicons-sync',
             25
         );
+        
+        // ✅ منوی جدید: Transfer Products
+        add_submenu_page(
+            'inventory-sync',
+            'انتقال محصولات',
+            'انتقال محصولات',
+            'manage_woocommerce',
+            'inventory-sync-transfer',
+            [$this, 'render_transfer_page']
+        );
+    }
+    
+    /**
+     * ✅ صفحه انتقال محصولات
+     */
+    public function render_transfer_page() {
+        if (!current_user_can('manage_woocommerce')) {
+            wp_die(__('دسترسی رد شد', 'inventory-sync'));
+        }
+        
+        include INVENTORY_SYNC_PLUGIN_DIR . 'admin/transfer-page.php';
     }
     
     public function enqueue_assets($hook_suffix) {
@@ -281,5 +305,43 @@ class Inventory_Sync_Admin {
         $products = Inventory_Sync_Database::get_transferred_products($limit, $offset);
         
         wp_send_json_success($products);
+    }
+    
+    /**
+     * ✅ AJAX handler: انتقال محصولات ساده
+     */
+    public function ajax_transfer_simple_products() {
+        check_ajax_referer('_wpnonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('عدم دسترسی');
+        }
+        
+        $product_ids = isset($_POST['product-checkbox']) ? array_map('intval', $_POST['product-checkbox']) : [];
+        
+        // اگر POST از Ajax نبود، سعی کن از یک آرایه دریافت کن
+        if (empty($product_ids)) {
+            $product_ids = isset($_POST['ids']) ? array_map('intval', (array)$_POST['ids']) : [];
+        }
+        
+        if (empty($product_ids)) {
+            wp_send_json_error('محصولی انتخاب نشده است');
+        }
+        
+        $transfer_manager = new Inventory_Sync_Transfer_Manager();
+        $results = [];
+        
+        foreach ($product_ids as $product_id) {
+            $result = $transfer_manager->transfer_simple_product($product_id);
+            
+            $results[] = [
+                'product_id' => $product_id,
+                'success' => !is_wp_error($result),
+                'message' => is_wp_error($result) ? $result->get_error_message() : 'انتقال موفق',
+                'data' => !is_wp_error($result) ? $result : null
+            ];
+        }
+        
+        wp_send_json_success($results);
     }
 }

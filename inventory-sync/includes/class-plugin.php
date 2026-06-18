@@ -19,6 +19,9 @@ class Inventory_Sync_Plugin {
         require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-category-attribute-sync.php';
         require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-sync-manager.php';
         
+        // ✅ لود کردن Transfer Manager برای انتقال محصولات
+        require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-transfer-manager.php';
+        
         // Admin
         if (is_admin()) {
             require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-admin.php';

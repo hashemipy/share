@@ -232,6 +232,8 @@ class Inventory_Sync_Manager {
     
     /**
      * موجودی را از یک سایت به سایت دیگر انتقال بده
+     * ✅ دوطرفه: هر دو جهت کار می‌کند
+     * ✅ فقط محصولات ساده
      * 
      * @param Inventory_Sync_API $from_api - API مبدا
      * @param Inventory_Sync_API $to_api - API مقصد
@@ -242,10 +244,11 @@ class Inventory_Sync_Manager {
      * @param object $mapping - اطلاعات mapping
      */
     private function sync_site_to_site($from_api, $to_api, $from_id, $to_id, $from_name, $to_name, $mapping) {
-        // دریافت محصول از سایت مبدا
-        $product = $from_api->get_product($from_id);
+        // دریافت محصولات از هر دو سایت
+        $product_from = $from_api->get_product($from_id);
+        $product_to = $to_api->get_product($to_id);
         
-        if (is_wp_error($product)) {
+        if (is_wp_error($product_from)) {
             Inventory_Sync_Database::insert_log(
                 $from_id,
                 '',
@@ -255,25 +258,65 @@ class Inventory_Sync_Manager {
                 '',
                 '',
                 'failed',
-                $product->get_error_message()
+                $product_from->get_error_message()
             );
             return;
         }
         
-        // محصول متغیّر: موجودی روی واریاسیون‌هاست، نه والد
-        if (($product['type'] ?? 'simple') === 'variable') {
-            $this->sync_variable_stock($from_api, $to_api, $from_id, $to_id, $from_name, $to_name, $product['name'] ?? '');
+        if (is_wp_error($product_to)) {
+            Inventory_Sync_Database::insert_log(
+                $to_id,
+                '',
+                'sync_inventory',
+                $from_name,
+                $to_name,
+                '',
+                '',
+                'failed',
+                $product_to->get_error_message()
+            );
             return;
         }
         
-        $stock = isset($product['stock_quantity']) ? intval($product['stock_quantity']) : 0;
+        // ✅ فقط برای محصولات ساده - متغیّر را skip کن
+        if (($product_from['type'] ?? 'simple') !== 'simple' || ($product_to['type'] ?? 'simple') !== 'simple') {
+            Inventory_Sync_Database::insert_log(
+                $from_id,
+                $product_from['name'] ?? '',
+                'sync_inventory',
+                $from_name,
+                $to_name,
+                '',
+                '',
+                'skipped',
+                'فقط محصولات ساده پشتیبانی می‌شوند'
+            );
+            return;
+        }
+        
+        // ✅ آخرین موجودی را بیابید (Last-Write-Wins Strategy)
+        $latest_stock = $this->get_latest_stock(
+            $product_from,
+            $product_to
+        );
         
         // اپدیت موجودی در سایت مقصد
-        $update_result = $to_api->update_product_stock($to_id, $stock);
+        $update_result_to = $to_api->update_product_stock($to_id, $latest_stock);
         
-        if (is_wp_error($update_result)) {
+        // ✅ دوطرفه: اپدیت موجودی در سایت مبدا نیز
+        $update_result_from = $from_api->update_product_stock($from_id, $latest_stock);
+        
+        // ✅ بررسی خطاها در هر دو جهت
+        $error_message = '';
+        if (is_wp_error($update_result_to)) {
+            $error_message .= "خطا در " . $to_name . ": " . $update_result_to->get_error_message() . " | ";
+        }
+        if (is_wp_error($update_result_from)) {
+            $error_message .= "خطا در " . $from_name . ": " . $update_result_from->get_error_message();
+        }
+        
+        if (!empty($error_message)) {
             // قرار بده برای دوباره تلاش (Retry Logic)
-            // ⭐ بهبود: حالا retry_count در جدول ذخیره می‌شود
             $retry_count = intval($mapping->retry_count ?? 0) + 1;
             
             if ($retry_count < 4) {
@@ -291,7 +334,7 @@ class Inventory_Sync_Manager {
                     [
                         'retry_count' => $retry_count,
                         'sync_status' => 'error',
-                        'error_message' => $update_result->get_error_message()
+                        'error_message' => $error_message
                     ],
                     ['id' => $mapping->id]
                 );
@@ -302,7 +345,7 @@ class Inventory_Sync_Manager {
                     $wpdb->prefix . 'inventory_sync_mapping',
                     [
                         'sync_status' => 'error',
-                        'error_message' => $update_result->get_error_message() . " (3 تلاش ناموفق)"
+                        'error_message' => $error_message . " (3 تلاش ناموفق)"
                     ],
                     ['id' => $mapping->id]
                 );
@@ -310,31 +353,31 @@ class Inventory_Sync_Manager {
             
             Inventory_Sync_Database::insert_log(
                 $from_id,
-                $product['name'] ?? '',
+                $product_from['name'] ?? '',
                 'sync_inventory',
                 $from_name,
                 $to_name,
                 '',
-                $stock,
+                $latest_stock,
                 'failed',
-                $update_result->get_error_message() . " (تلاش $retry_count/3)"
+                $error_message . " (تلاش $retry_count/3)"
             );
             return;
         }
         
-        // لاگ موفقیت
+        // ✅ لاگ موفقیت
         Inventory_Sync_Database::insert_log(
             $from_id,
-            $product['name'] ?? '',
+            $product_from['name'] ?? '',
             'sync_inventory',
             $from_name,
             $to_name,
             '',
-            $stock,
+            $latest_stock,
             'success'
         );
         
-        // ⭐ بسیار مهم: بروز کن status به synced
+        // ✅ بروز‌رسانی status به synced
         global $wpdb;
         $wpdb->update(
             $wpdb->prefix . 'inventory_sync_mapping',
@@ -403,6 +446,31 @@ class Inventory_Sync_Manager {
             'success',
             "موجودی {$synced} واریاسیون هماهنگ شد"
         );
+    }
+    
+    /**
+     * ✅ تابع جدید: آخرین موجودی را بیابید
+     * استراتژی: Last-Write-Wins
+     * 
+     * @param array $product1 - محصول از سایت 1
+     * @param array $product2 - محصول از سایت 2
+     * @return int - آخرین موجودی
+     */
+    private function get_latest_stock($product1, $product2) {
+        $stock1 = isset($product1['stock_quantity']) ? intval($product1['stock_quantity']) : 0;
+        $stock2 = isset($product2['stock_quantity']) ? intval($product2['stock_quantity']) : 0;
+        
+        // اگر آپدیت در محصول متفاوت است، آخرین تغییر را بیابید
+        $date1 = isset($product1['date_modified']) ? strtotime($product1['date_modified']) : 0;
+        $date2 = isset($product2['date_modified']) ? strtotime($product2['date_modified']) : 0;
+        
+        // اگر هردو تاریخ یکسان است، بیشترین موجودی را انتخاب کن
+        if ($date1 === $date2) {
+            return max($stock1, $stock2);
+        }
+        
+        // آخرین تغییر‌شده را برگردان
+        return ($date1 > $date2) ? $stock1 : $stock2;
     }
     
     /**
