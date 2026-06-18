@@ -190,37 +190,6 @@ class Inventory_Sync_Manager {
             return new WP_Error('not_found', 'نقشه‌برداری پیدا نشد');
         }
         
-        // ✅ بررسی Lock - اگر قفل است، skip کن
-        if (Inventory_Sync_Database::is_mapping_locked($mapping_id)) {
-            Inventory_Sync_Database::add_sync_attempt_log(
-                $mapping_id,
-                'auto',
-                'skipped',
-                'Mapping هنوز در دست پردازش است (locked)'
-            );
-            return new WP_Error('locked', 'نقشه‌برداری قفل است');
-        }
-        
-        // ✅ Lock کن mapping تا sync تکمیل شود
-        Inventory_Sync_Database::lock_mapping($mapping_id, 'unknown', 0);
-        
-        // ✅ بررسی تلاش‌های اخیر (اگر ۵+ تلاش ناموفق در ۵ دقیقه، دوباره تلاش نکن)
-        $failed_attempts = Inventory_Sync_Database::get_recent_failed_attempts($mapping_id, 5);
-        if ($failed_attempts >= 5) {
-            Inventory_Sync_Database::unlock_mapping(
-                $mapping_id,
-                'error',
-                'بیش از ۵ تلاش ناموفق در ۵ دقیقه اخیر - متوقف شد'
-            );
-            Inventory_Sync_Database::add_sync_attempt_log(
-                $mapping_id,
-                'auto',
-                'skipped',
-                'بیش از حد تلاش - متوقف'
-            );
-            return new WP_Error('too_many_attempts', 'بیش از حد تلاش برای این Mapping');
-        }
-        
         try {
             $direction = Inventory_Sync_Settings::get_sync_direction();
             
@@ -250,35 +219,33 @@ class Inventory_Sync_Manager {
                 );
             }
             
-            // ✅ موفقیت: Unlock کن
-            Inventory_Sync_Database::unlock_mapping(
-                $mapping_id,
-                'synced',
-                'همگام‌سازی موفق'
-            );
-            
-            Inventory_Sync_Database::add_sync_attempt_log(
-                $mapping_id,
-                'auto',
-                'success',
-                'همگام‌سازی موفق'
+            // ✅ موفقیت: بروز کن status
+            global $wpdb;
+            $wpdb->update(
+                $wpdb->prefix . 'inventory_sync_mapping',
+                [
+                    'sync_status' => 'synced',
+                    'retry_count' => 0,
+                    'error_message' => ''
+                ],
+                ['id' => $mapping_id]
             );
             
             return true;
             
         } catch (Exception $e) {
-            // ✅ خطا: Unlock کن و log کن
-            Inventory_Sync_Database::unlock_mapping(
-                $mapping_id,
-                'error',
-                $e->getMessage()
-            );
+            // ✅ خطا: log کن
+            global $wpdb;
+            $retry_count = intval($mapping->retry_count ?? 0) + 1;
             
-            Inventory_Sync_Database::add_sync_attempt_log(
-                $mapping_id,
-                'auto',
-                'failed',
-                $e->getMessage()
+            $wpdb->update(
+                $wpdb->prefix . 'inventory_sync_mapping',
+                [
+                    'sync_status' => 'error',
+                    'error_message' => $e->getMessage(),
+                    'retry_count' => $retry_count
+                ],
+                ['id' => $mapping_id]
             );
             
             return new WP_Error('sync_error', $e->getMessage());
@@ -350,29 +317,6 @@ class Inventory_Sync_Manager {
             return;
         }
         
-        // ✅ بررسی Last-Change-Source
-        // اگر تغیر اخیر از سایت‌های دیگر است و هنوز ۳۰ ثانیه نگذشته، sync نکن
-        $last_change = Inventory_Sync_Database::get_last_change_info($mapping->id);
-        $current_time = time();
-        $last_change_time = strtotime($last_change->last_change_timestamp ?? 'now');
-        $time_diff = $current_time - $last_change_time;
-        
-        // اگر تغیر خیلی اخیر است و از سایت دیگر است، صبر کن
-        if ($time_diff < 30 && $last_change->last_change_site !== 'unknown' && $last_change->last_change_site !== $from_name) {
-            Inventory_Sync_Database::insert_log(
-                $from_id,
-                $product_from['name'] ?? '',
-                'sync_inventory',
-                $from_name,
-                $to_name,
-                '',
-                '',
-                'skipped',
-                'تغیر اخیر از طرف دیگر است - منتظر'
-            );
-            return;
-        }
-        
         // ✅ تشخیص آخرین موجودی با دقت بالا
         $latest_result = $this->get_latest_stock(
             $product_from,
@@ -433,8 +377,8 @@ class Inventory_Sync_Manager {
             'sync_inventory',
             $from_name,
             $to_name,
-            $old_stock,
-            $latest_stock,
+            strval($old_stock),
+            strval($latest_stock),
             'success',
             "موجودی از $old_stock به $latest_stock تغییر یافت ($reason)"
         );
@@ -1166,7 +1110,7 @@ class Inventory_Sync_Manager {
      * - 'id': شناسه ویژگی عمومی در سایت مقصد (mapping شده)
      * - 'option': نام مقدار ویژگی (مثلاً 'سبز', 'لارج')
      * 
-     * ⚠️ بسیار مهم: ویژگی‌های متغیر باید دقیقاً همانطور resolve شوند که
+     * ⚠️ بسیار م��م: ویژگی‌های متغیر باید دقیقاً همانطور resolve شوند که
      * در لیست ویژگی والد محصول resolve شده‌اند. در غیر این صورت
      * WooCommerce واریاسیون را به محصول متصل نمی‌کند.
      * 

@@ -105,17 +105,6 @@ class Inventory_Sync_Admin {
         include INVENTORY_SYNC_PLUGIN_DIR . 'admin/mapping-page.php';
     }
     
-    /**
-     * ✅ صفحه انتقال محصولات
-     */
-    public function render_transfer_page() {
-        if (!current_user_can('manage_woocommerce')) {
-            wp_die(__('دسترسی رد شد', 'inventory-sync'));
-        }
-        
-        include INVENTORY_SYNC_PLUGIN_DIR . 'admin/transfer-page.php';
-    }
-    
     public function enqueue_assets($hook_suffix) {
         if (strpos($hook_suffix, 'inventory-sync') === false) {
             return;
