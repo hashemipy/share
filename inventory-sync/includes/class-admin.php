@@ -60,6 +60,38 @@ class Inventory_Sync_Admin {
             'inventory-sync-mapping',
             [$this, 'render_mapping_page']
         );
+        
+        // ✅ منوی جدید: بررسی دقیق Logs
+        add_submenu_page(
+            'inventory-sync',
+            'بررسی دقیق Logs',
+            'بررسی دقیق Logs',
+            'manage_woocommerce',
+            'inventory-sync-verification',
+            [$this, 'render_verification_page']
+        );
+    }
+    
+    /**
+     * ✅ صفحه نمایش صفحه Transfer
+     */
+    public function render_transfer_page() {
+        if (!current_user_can('manage_woocommerce')) {
+            wp_die(__('دسترسی رد شد', 'inventory-sync'));
+        }
+        
+        include INVENTORY_SYNC_PLUGIN_DIR . 'admin/transfer-page.php';
+    }
+    
+    /**
+     * ✅ صفحه بررسی دقیق Logs
+     */
+    public function render_verification_page() {
+        if (!current_user_can('manage_woocommerce')) {
+            wp_die(__('دسترسی رد شد', 'inventory-sync'));
+        }
+        
+        include INVENTORY_SYNC_PLUGIN_DIR . 'admin/verification-logs.php';
     }
     
     /**

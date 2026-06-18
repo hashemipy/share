@@ -373,41 +373,60 @@ class Inventory_Sync_Manager {
             return;
         }
         
-        // ✅ تعیین آخرین موجودی (به جای فقط پذیرفتن موجودی مبدا)
-        // منطق: اگر تغیر از مبدا است، از موجودی مبدا استفاده کن
-        // اگر تغیر از مقصد است، کاری نکن (چون مقصد هنوز قفل است)
-        $latest_stock = $product_from['stock_quantity'] ?? 0;
-        $source_site = 'site1';
+        // ✅ تشخیص آخرین موجودی با دقت بالا
+        $latest_result = $this->get_latest_stock(
+            $product_from,
+            $product_to,
+            $from_id,
+            $to_id,
+            $from_name,
+            $to_name
+        );
         
-        if ($from_name === 'سایت 2') {
-            $source_site = 'site2';
+        $latest_stock = $latest_result['stock'];
+        $source_site = ($latest_result['source'] === $from_name) ? 'from' : 'to';
+        $reason = $latest_result['reason'];
+        
+        // ✅ sync فقط اگر منبع از مبدا باشد
+        // (منطق: سایت مقصد همیشه موجودی از مبدا می‌گیرد)
+        if ($source_site !== 'from') {
+            // اگر آخرین تغیر از سایت مقصد است، sync نکن
+            Inventory_Sync_Database::insert_log(
+                $from_id,
+                $product_from['name'] ?? '',
+                'sync_inventory',
+                $from_name,
+                $to_name,
+                '',
+                '',
+                'skipped',
+                "آخرین تغیر از $to_name است - sync متوقف ($reason)"
+            );
+            return;
         }
-        
-        // ✅ فقط یک سمت را sync کن (نه هر دو)
-        // سایت مقصد موجودی را از مبدا بگیرد
-        $update_result_to = $to_api->update_product_stock($to_id, $latest_stock);
         
         $old_stock = $product_to['stock_quantity'] ?? 0;
         
-        // ✅ بررسی خطا
+        // ✅ اپدیت سایت مقصد با موجودی جدید
+        $update_result_to = $to_api->update_product_stock($to_id, $latest_stock);
+        
         if (is_wp_error($update_result_to)) {
-            $error_message = "خطا در " . $to_name . ": " . $update_result_to->get_error_message();
-            throw new Exception($error_message);
+            throw new Exception("خطا در " . $to_name . ": " . $update_result_to->get_error_message());
         }
         
-        // ✅ اپدیت Mapping با معلومات Last Change
+        // ✅ اپدیت Mapping
         global $wpdb;
         $wpdb->update(
             $wpdb->prefix . 'inventory_sync_mapping',
             [
-                'last_change_site' => $source_site,
+                'last_change_site' => 'from',
                 'last_change_timestamp' => current_time('mysql'),
                 'last_change_stock' => $latest_stock
             ],
             ['id' => $mapping->id]
         );
         
-        // ✅ لاگ موفقیت
+        // ✅ لاگ دقیق با دلیل انتخاب
         Inventory_Sync_Database::insert_log(
             $from_id,
             $product_from['name'] ?? '',
@@ -417,7 +436,7 @@ class Inventory_Sync_Manager {
             $old_stock,
             $latest_stock,
             'success',
-            "موجودی از $old_stock به $latest_stock تغییر یافت"
+            "موجودی از $old_stock به $latest_stock تغییر یافت ($reason)"
         );
     }
     
@@ -480,28 +499,96 @@ class Inventory_Sync_Manager {
     }
     
     /**
-     * ✅ تابع جدید: آخرین موجودی را بیابید
-     * استراتژی: Last-Write-Wins
+     * ✅ تابع بهبود‌یافته: آخرین موجودی را بیابید
+     * استراتژی: Timestamp مقایسه + Verification Log
+     * 
+     * مشکل قبلی: گاهی موجودی‌ها غلط اعمال می‌شدند
+     * حل: دقیق‌تر timestamp مقایسه کنیم و تمام موارد را log کنیم
      * 
      * @param array $product1 - محصول از سایت 1
      * @param array $product2 - محصول از سایت 2
-     * @return int - آخرین موجودی
+     * @param int $product1_id - ID سایت 1
+     * @param int $product2_id - ID سایت 2
+     * @param string $name1 - نام سایت 1
+     * @param string $name2 - نام سایت 2
+     * @return array - ['stock' => int, 'source' => string, 'reason' => string]
      */
-    private function get_latest_stock($product1, $product2) {
+    private function get_latest_stock($product1, $product2, $product1_id = 0, $product2_id = 0, $name1 = 'سایت 1', $name2 = 'سایت 2') {
         $stock1 = isset($product1['stock_quantity']) ? intval($product1['stock_quantity']) : 0;
         $stock2 = isset($product2['stock_quantity']) ? intval($product2['stock_quantity']) : 0;
         
-        // اگر آپدیت در محصول متفاوت است، آخرین تغییر را بیابید
+        // دریافت تاریخ تغییر دقیق
         $date1 = isset($product1['date_modified']) ? strtotime($product1['date_modified']) : 0;
         $date2 = isset($product2['date_modified']) ? strtotime($product2['date_modified']) : 0;
         
-        // اگر هردو تاریخ یکسان است، بیشترین موجودی را انتخاب کن
-        if ($date1 === $date2) {
-            return max($stock1, $stock2);
+        $result = [
+            'stock' => $stock1,
+            'source' => $name1,
+            'reason' => 'استراتژی پیش‌فرض'
+        ];
+        
+        // اگر تاریخ‌ها کاملاً معلوم نیست
+        if ($date1 === 0 && $date2 === 0) {
+            $result['stock'] = max($stock1, $stock2);
+            $result['source'] = ($stock1 >= $stock2) ? $name1 : $name2;
+            $result['reason'] = 'تاریخ دردسترس نیست - بیشترین موجودی انتخاب شد';
+            
+            error_log("[Inventory-Sync] موجودی انتخابی (ID1:$product1_id, ID2:$product2_id): " . json_encode($result));
+            return $result;
         }
         
-        // آخرین تغییر‌شده را برگردان
-        return ($date1 > $date2) ? $stock1 : $stock2;
+        // تاریخ معلوم نیست برای یکی از محصولات
+        if ($date1 === 0) {
+            $result['stock'] = $stock2;
+            $result['source'] = $name2;
+            $result['reason'] = "$name1 تاریخ ندارد - از $name2 استفاده شد";
+            
+            error_log("[Inventory-Sync] موجودی انتخابی (ID1:$product1_id, ID2:$product2_id): " . json_encode($result));
+            return $result;
+        }
+        
+        if ($date2 === 0) {
+            $result['stock'] = $stock1;
+            $result['source'] = $name1;
+            $result['reason'] = "$name2 تاریخ ندارد - از $name1 استفاده شد";
+            
+            error_log("[Inventory-Sync] موجودی انتخابی (ID1:$product1_id, ID2:$product2_id): " . json_encode($result));
+            return $result;
+        }
+        
+        // ✅ هردو تاریخ معلوم است - دقیق مقایسه کن
+        $time_diff = abs($date1 - $date2);
+        
+        // اگر تفاوت کمتر از ۱ ثانیه است، احتمالاً یکسان هستند
+        if ($time_diff < 1) {
+            $result['stock'] = max($stock1, $stock2);
+            $result['source'] = ($stock1 >= $stock2) ? $name1 : $name2;
+            $result['reason'] = 'تاریخ‌ها یکسان است - بیشترین موجودی انتخاب شد';
+        } 
+        // اگر تفاوت کمتر از ۲ دقیقه است، احتمالاً سیاق دارند
+        else if ($time_diff < 120) {
+            $result['stock'] = max($stock1, $stock2);
+            $result['source'] = ($stock1 >= $stock2) ? $name1 : $name2;
+            $result['reason'] = 'تاریخ‌های نزدیک (بیش از 120 ثانیه نیست) - بیشترین انتخاب شد';
+        }
+        // تفاوت قابل‌توجهی است - آخرین تغییر را انتخاب کن
+        else {
+            if ($date1 > $date2) {
+                $result['stock'] = $stock1;
+                $result['source'] = $name1;
+                $result['reason'] = "$name1 آخرین‌تر است (تفاوت: " . round($time_diff / 60) . " دقیقه)";
+            } else {
+                $result['stock'] = $stock2;
+                $result['source'] = $name2;
+                $result['reason'] = "$name2 آخرین‌تر است (تفاوت: " . round($time_diff / 60) . " دقیقه)";
+            }
+        }
+        
+        // ✅ Log کامل برای Debugging
+        error_log("[Inventory-Sync] موجودی انتخابی (ID1:$product1_id, ID2:$product2_id): " . json_encode($result));
+        error_log("[Inventory-Sync] جزئیات: $name1 موجودی=$stock1 (تاریخ:" . date('Y-m-d H:i:s', $date1) . "), $name2 موجودی=$stock2 (تاریخ:" . date('Y-m-d H:i:s', $date2) . ")");
+        
+        return $result;
     }
     
     /**
