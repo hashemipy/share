@@ -170,6 +170,8 @@ class Inventory_Sync_Manager {
     
     /**
      * هماهنگ‌سازی موجودی بین دو سایت
+     * ✅ بهبود: Lock System برای جلوگیری از Ping-Pong Bug
+     * ✅ بهبود: Last-Change-Source برای ردیابی منبع تغیر
      * 
      * @param int $mapping_id - شناسه mapping
      * @return bool|WP_Error
@@ -188,52 +190,106 @@ class Inventory_Sync_Manager {
             return new WP_Error('not_found', 'نقشه‌برداری پیدا نشد');
         }
         
-        $direction = Inventory_Sync_Settings::get_sync_direction();
-        
-        // جهت سایت 1 → سایت 2
-        if ($direction === 'site1_to_site2' || $direction === 'bidirectional') {
-            $this->sync_site_to_site(
-                $this->site1_api,
-                $this->site2_api,
-                $mapping->site1_product_id,
-                $mapping->site2_product_id,
-                'سایت 1',
-                'سایت 2',
-                $mapping
+        // ✅ بررسی Lock - اگر قفل است، skip کن
+        if (Inventory_Sync_Database::is_mapping_locked($mapping_id)) {
+            Inventory_Sync_Database::add_sync_attempt_log(
+                $mapping_id,
+                'auto',
+                'skipped',
+                'Mapping هنوز در دست پردازش است (locked)'
             );
+            return new WP_Error('locked', 'نقشه‌برداری قفل است');
         }
         
-        // جهت سایت 2 → سایت 1
-        if ($direction === 'site2_to_site1' || $direction === 'bidirectional') {
-            $this->sync_site_to_site(
-                $this->site2_api,
-                $this->site1_api,
-                $mapping->site2_product_id,
-                $mapping->site1_product_id,
-                'سایت 2',
-                'سایت 1',
-                $mapping
+        // ✅ Lock کن mapping تا sync تکمیل شود
+        Inventory_Sync_Database::lock_mapping($mapping_id, 'unknown', 0);
+        
+        // ✅ بررسی تلاش‌های اخیر (اگر ۵+ تلاش ناموفق در ۵ دقیقه، دوباره تلاش نکن)
+        $failed_attempts = Inventory_Sync_Database::get_recent_failed_attempts($mapping_id, 5);
+        if ($failed_attempts >= 5) {
+            Inventory_Sync_Database::unlock_mapping(
+                $mapping_id,
+                'error',
+                'بیش از ۵ تلاش ناموفق در ۵ دقیقه اخیر - متوقف شد'
             );
+            Inventory_Sync_Database::add_sync_attempt_log(
+                $mapping_id,
+                'auto',
+                'skipped',
+                'بیش از حد تلاش - متوقف'
+            );
+            return new WP_Error('too_many_attempts', 'بیش از حد تلاش برای این Mapping');
         }
         
-        // اپدیت موفقیت
-        $wpdb->update(
-            $wpdb->prefix . 'inventory_sync_mapping',
-            [
-                'sync_status' => 'synced',
-                'last_sync' => current_time('mysql'),
-                'error_message' => ''
-            ],
-            ['id' => $mapping_id]
-        );
-        
-        return true;
+        try {
+            $direction = Inventory_Sync_Settings::get_sync_direction();
+            
+            // جهت سایت 1 → سایت 2
+            if ($direction === 'site1_to_site2' || $direction === 'bidirectional') {
+                $this->sync_site_to_site(
+                    $this->site1_api,
+                    $this->site2_api,
+                    $mapping->site1_product_id,
+                    $mapping->site2_product_id,
+                    'سایت 1',
+                    'سایت 2',
+                    $mapping
+                );
+            }
+            
+            // جهت سایت 2 → سایت 1
+            if ($direction === 'site2_to_site1' || $direction === 'bidirectional') {
+                $this->sync_site_to_site(
+                    $this->site2_api,
+                    $this->site1_api,
+                    $mapping->site2_product_id,
+                    $mapping->site1_product_id,
+                    'سایت 2',
+                    'سایت 1',
+                    $mapping
+                );
+            }
+            
+            // ✅ موفقیت: Unlock کن
+            Inventory_Sync_Database::unlock_mapping(
+                $mapping_id,
+                'synced',
+                'همگام‌سازی موفق'
+            );
+            
+            Inventory_Sync_Database::add_sync_attempt_log(
+                $mapping_id,
+                'auto',
+                'success',
+                'همگام‌سازی موفق'
+            );
+            
+            return true;
+            
+        } catch (Exception $e) {
+            // ✅ خطا: Unlock کن و log کن
+            Inventory_Sync_Database::unlock_mapping(
+                $mapping_id,
+                'error',
+                $e->getMessage()
+            );
+            
+            Inventory_Sync_Database::add_sync_attempt_log(
+                $mapping_id,
+                'auto',
+                'failed',
+                $e->getMessage()
+            );
+            
+            return new WP_Error('sync_error', $e->getMessage());
+        }
     }
     
     /**
      * موجودی را از یک سایت به سایت دیگر انتقال بده
      * ✅ دوطرفه: هر دو جهت کار می‌کند
      * ✅ فقط محصولات ساده
+     * ✅ بهبود: Last-Change-Source برای جلوگیری از Ping-Pong
      * 
      * @param Inventory_Sync_API $from_api - API مبدا
      * @param Inventory_Sync_API $to_api - API مقصد
@@ -260,7 +316,7 @@ class Inventory_Sync_Manager {
                 'failed',
                 $product_from->get_error_message()
             );
-            return;
+            throw new Exception("خطا در دریافت محصول از $from_name: " . $product_from->get_error_message());
         }
         
         if (is_wp_error($product_to)) {
@@ -275,7 +331,7 @@ class Inventory_Sync_Manager {
                 'failed',
                 $product_to->get_error_message()
             );
-            return;
+            throw new Exception("خطا در دریافت محصول از $to_name: " . $product_to->get_error_message());
         }
         
         // ✅ فقط برای محصولات ساده - متغیّر را skip کن
@@ -294,63 +350,15 @@ class Inventory_Sync_Manager {
             return;
         }
         
-        // ✅ آخرین موجودی را بیابید (Last-Write-Wins Strategy)
-        $latest_stock = $this->get_latest_stock(
-            $product_from,
-            $product_to
-        );
+        // ✅ بررسی Last-Change-Source
+        // اگر تغیر اخیر از سایت‌های دیگر است و هنوز ۳۰ ثانیه نگذشته، sync نکن
+        $last_change = Inventory_Sync_Database::get_last_change_info($mapping->id);
+        $current_time = time();
+        $last_change_time = strtotime($last_change->last_change_timestamp ?? 'now');
+        $time_diff = $current_time - $last_change_time;
         
-        // اپدیت موجودی در سایت مقصد
-        $update_result_to = $to_api->update_product_stock($to_id, $latest_stock);
-        
-        // ✅ دوطرفه: اپدیت موجودی در سایت مبدا نیز
-        $update_result_from = $from_api->update_product_stock($from_id, $latest_stock);
-        
-        // ✅ بررسی خطاها در هر دو جهت
-        $error_message = '';
-        if (is_wp_error($update_result_to)) {
-            $error_message .= "خطا در " . $to_name . ": " . $update_result_to->get_error_message() . " | ";
-        }
-        if (is_wp_error($update_result_from)) {
-            $error_message .= "خطا در " . $from_name . ": " . $update_result_from->get_error_message();
-        }
-        
-        if (!empty($error_message)) {
-            // قرار بده برای دوباره تلاش (Retry Logic)
-            $retry_count = intval($mapping->retry_count ?? 0) + 1;
-            
-            if ($retry_count < 4) {
-                // دوباره تلاش کن (تا 3 بار)
-                wp_schedule_single_event(
-                    time() + (60 * $retry_count), // بعد از 1، 2، 3 دقیقه تلاش کن
-                    'inventory_sync_mapping',
-                    [$mapping->id]
-                );
-                
-                // به‌روزرسانی retry_count در database
-                global $wpdb;
-                $wpdb->update(
-                    $wpdb->prefix . 'inventory_sync_mapping',
-                    [
-                        'retry_count' => $retry_count,
-                        'sync_status' => 'error',
-                        'error_message' => $error_message
-                    ],
-                    ['id' => $mapping->id]
-                );
-            } else {
-                // 3 بار تلاش شده است، دیگر تلاش نکن
-                global $wpdb;
-                $wpdb->update(
-                    $wpdb->prefix . 'inventory_sync_mapping',
-                    [
-                        'sync_status' => 'error',
-                        'error_message' => $error_message . " (3 تلاش ناموفق)"
-                    ],
-                    ['id' => $mapping->id]
-                );
-            }
-            
+        // اگر تغیر خیلی اخیر است و از سایت دیگر است، صبر کن
+        if ($time_diff < 30 && $last_change->last_change_site !== 'unknown' && $last_change->last_change_site !== $from_name) {
             Inventory_Sync_Database::insert_log(
                 $from_id,
                 $product_from['name'] ?? '',
@@ -358,12 +366,46 @@ class Inventory_Sync_Manager {
                 $from_name,
                 $to_name,
                 '',
-                $latest_stock,
-                'failed',
-                $error_message . " (تلاش $retry_count/3)"
+                '',
+                'skipped',
+                'تغیر اخیر از طرف دیگر است - منتظر'
             );
             return;
         }
+        
+        // ✅ تعیین آخرین موجودی (به جای فقط پذیرفتن موجودی مبدا)
+        // منطق: اگر تغیر از مبدا است، از موجودی مبدا استفاده کن
+        // اگر تغیر از مقصد است، کاری نکن (چون مقصد هنوز قفل است)
+        $latest_stock = $product_from['stock_quantity'] ?? 0;
+        $source_site = 'site1';
+        
+        if ($from_name === 'سایت 2') {
+            $source_site = 'site2';
+        }
+        
+        // ✅ فقط یک سمت را sync کن (نه هر دو)
+        // سایت مقصد موجودی را از مبدا بگیرد
+        $update_result_to = $to_api->update_product_stock($to_id, $latest_stock);
+        
+        $old_stock = $product_to['stock_quantity'] ?? 0;
+        
+        // ✅ بررسی خطا
+        if (is_wp_error($update_result_to)) {
+            $error_message = "خطا در " . $to_name . ": " . $update_result_to->get_error_message();
+            throw new Exception($error_message);
+        }
+        
+        // ✅ اپدیت Mapping با معلومات Last Change
+        global $wpdb;
+        $wpdb->update(
+            $wpdb->prefix . 'inventory_sync_mapping',
+            [
+                'last_change_site' => $source_site,
+                'last_change_timestamp' => current_time('mysql'),
+                'last_change_stock' => $latest_stock
+            ],
+            ['id' => $mapping->id]
+        );
         
         // ✅ لاگ موفقیت
         Inventory_Sync_Database::insert_log(
@@ -372,21 +414,10 @@ class Inventory_Sync_Manager {
             'sync_inventory',
             $from_name,
             $to_name,
-            '',
+            $old_stock,
             $latest_stock,
-            'success'
-        );
-        
-        // ✅ بروز‌رسانی status به synced
-        global $wpdb;
-        $wpdb->update(
-            $wpdb->prefix . 'inventory_sync_mapping',
-            [
-                'sync_status' => 'synced',
-                'retry_count' => 0,
-                'error_message' => ''
-            ],
-            ['site1_product_id' => $from_id, 'site2_product_id' => $to_id]
+            'success',
+            "موجودی از $old_stock به $latest_stock تغییر یافت"
         );
     }
     
@@ -809,7 +840,7 @@ class Inventory_Sync_Manager {
      * متغیّرها در WooCommerce بخشی از آبجکت محصول نیستند و باید جداگانه
      * از endpoint /products/{id}/variations دریافت و در مقصد ساخته شوند.
      * 
-     * ⚠️ بسیار مهم: پیش از این تابع، ویژگی‌های محصول (attributes) باید در سایت 2
+     * ⚠️ بسیار مهم: پیش از این تابع، ویژگی‌های محص��ل (attributes) باید در سایت 2
      * sync شده باشند تا متغیرها بتوانند به آن‌ها اشاره کنند.
      */
     private function transfer_variations($site1_product_id, $site2_parent_id, $product_name) {

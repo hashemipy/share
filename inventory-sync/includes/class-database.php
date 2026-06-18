@@ -23,10 +23,23 @@ class Inventory_Sync_Database {
             sync_status ENUM('pending', 'synced', 'error') DEFAULT 'pending',
             error_message LONGTEXT,
             retry_count INT DEFAULT 0,
+            
+            -- ✅ ستون‌های جدید برای حل Ping-Pong Bug
+            last_change_site ENUM('site1', 'site2', 'unknown') DEFAULT 'unknown',
+            last_change_timestamp DATETIME,
+            last_change_stock INT DEFAULT 0,
+            
+            -- ✅ ستون‌های جدید برای Lock System (جلوگیری از Ping-Pong)
+            is_processing BOOLEAN DEFAULT 0,
+            lock_until DATETIME,
+            sync_status_message VARCHAR(255),
+            
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             UNIQUE KEY unique_mapping (site1_product_id, site2_product_id),
             INDEX idx_status (sync_status),
+            INDEX idx_processing (is_processing),
+            INDEX idx_lock_until (lock_until),
             INDEX idx_created (created_at)
         ) $charset_collate;";
         
@@ -252,5 +265,140 @@ class Inventory_Sync_Database {
         );
         
         return !empty($result);
+    }
+    
+    /**
+     * ✅ Lock یک mapping برای جلوگیری از Ping-Pong Bug
+     * Lock برای ۳۰ ثانیه قفل می‌شود
+     */
+    public static function lock_mapping($mapping_id, $change_site = 'unknown', $new_stock = 0) {
+        global $wpdb;
+        
+        $lock_until = date('Y-m-d H:i:s', time() + 30); // قفل برای 30 ثانیه
+        
+        return $wpdb->update(
+            $wpdb->prefix . 'inventory_sync_mapping',
+            [
+                'is_processing' => 1,
+                'lock_until' => $lock_until,
+                'last_change_site' => $change_site,
+                'last_change_timestamp' => current_time('mysql'),
+                'last_change_stock' => $new_stock,
+                'sync_status_message' => 'در حال همگام‌سازی...'
+            ],
+            ['id' => $mapping_id],
+            ['%d', '%s', '%s', '%s', '%d', '%s']
+        );
+    }
+    
+    /**
+     * ✅ بررسی اینکه آیا یک mapping قفل است
+     */
+    public static function is_mapping_locked($mapping_id) {
+        global $wpdb;
+        
+        $result = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}inventory_sync_mapping 
+                 WHERE id = %d AND is_processing = 1 AND lock_until > NOW()",
+                $mapping_id
+            )
+        );
+        
+        return !empty($result);
+    }
+    
+    /**
+     * ✅ آزاد کردن قفل یک mapping
+     */
+    public static function unlock_mapping($mapping_id, $new_status = 'synced', $message = '') {
+        global $wpdb;
+        
+        return $wpdb->update(
+            $wpdb->prefix . 'inventory_sync_mapping',
+            [
+                'is_processing' => 0,
+                'lock_until' => null,
+                'sync_status' => $new_status,
+                'sync_status_message' => $message,
+                'last_sync' => current_time('mysql')
+            ],
+            ['id' => $mapping_id],
+            ['%d', '%s', '%s', '%s', '%s']
+        );
+    }
+    
+    /**
+     * ✅ دریافت اطلاعات تغیر آخر (Last Change Source)
+     */
+    public static function get_last_change_info($mapping_id) {
+        global $wpdb;
+        
+        return $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT id, last_change_site, last_change_timestamp, last_change_stock, sync_status_message 
+                 FROM {$wpdb->prefix}inventory_sync_mapping 
+                 WHERE id = %d",
+                $mapping_id
+            )
+        );
+    }
+    
+    /**
+     * ✅ آپدیت Cron لاگ - برای بررسی تعداد اجراها
+     */
+    public static function add_sync_attempt_log($mapping_id, $attempt_type = 'auto', $result = 'pending', $message = '') {
+        global $wpdb;
+        
+        // جدول جدید برای Cron Attempts
+        $table = $wpdb->prefix . 'inventory_sync_attempts';
+        
+        // ایجاد جدول اگر وجود نداشتند
+        $charset_collate = $wpdb->get_charset_collate();
+        $sql = "CREATE TABLE IF NOT EXISTS $table (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            mapping_id BIGINT(20) UNSIGNED NOT NULL,
+            attempt_type VARCHAR(50),
+            attempt_result ENUM('success', 'failed', 'pending', 'skipped') DEFAULT 'pending',
+            message LONGTEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_mapping (mapping_id),
+            INDEX idx_created (created_at)
+        ) $charset_collate;";
+        
+        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+        dbDelta($sql);
+        
+        return $wpdb->insert(
+            $table,
+            [
+                'mapping_id' => $mapping_id,
+                'attempt_type' => $attempt_type,
+                'attempt_result' => $result,
+                'message' => $message
+            ],
+            ['%d', '%s', '%s', '%s']
+        );
+    }
+    
+    /**
+     * ✅ بررسی تعداد تلاش‌های اخیر برای یک mapping
+     * اگر ۳+ تلاش در ۵ دقیقه اخیر موفق نبود = پرتکرار است
+     */
+    public static function get_recent_failed_attempts($mapping_id, $minutes = 5) {
+        global $wpdb;
+        
+        $attempts = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT COUNT(*) as count FROM {$wpdb->prefix}inventory_sync_attempts 
+                 WHERE mapping_id = %d 
+                 AND attempt_result IN ('failed', 'pending') 
+                 AND created_at > DATE_SUB(NOW(), INTERVAL %d MINUTE)",
+                $mapping_id,
+                $minutes
+            )
+        );
+        
+        return isset($attempts[0]->count) ? $attempts[0]->count : 0;
     }
 }
