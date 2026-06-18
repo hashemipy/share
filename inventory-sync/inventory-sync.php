@@ -49,6 +49,18 @@ add_action('init', function () {
     load_plugin_textdomain('inventory-sync', false, dirname(INVENTORY_SYNC_BASENAME) . '/languages');
 });
 
+// ✨ Plugin Activation Hook برای Database Setup
+register_activation_hook(__FILE__, function() {
+    require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-database.php';
+    require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-database-migration.php';
+    
+    // Create tables
+    Inventory_Sync_Database::create_tables();
+    
+    // Run migrations
+    Inventory_Sync_Database_Migration::run_migrations();
+});
+
 // Activation Hook
 register_activation_hook(__FILE__, function () {
     require_once INVENTORY_SYNC_PLUGIN_DIR . 'includes/class-database.php';

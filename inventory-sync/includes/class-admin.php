@@ -25,6 +25,10 @@ class Inventory_Sync_Admin {
         
         // ✨ جستجوی محصولات برای جفت‌سازی
         add_action('wp_ajax_inventory_sync_search_products', [$this, 'ajax_search_products']);
+        add_action('wp_ajax_inventory_sync_create_pair', [$this, 'ajax_create_pair']);
+        add_action('wp_ajax_inventory_sync_get_pairs', [$this, 'ajax_get_pairs']);
+        add_action('wp_ajax_inventory_sync_sync_pair', [$this, 'ajax_sync_pair']);
+        add_action('wp_ajax_inventory_sync_delete_pair', [$this, 'ajax_delete_pair']);
     }
     
     public function add_menu() {
@@ -82,6 +86,15 @@ class Inventory_Sync_Admin {
                 'verifySettings' => __('ابتدا تنظیمات را تنظیم کنید', 'inventory-sync')
             ]
         ]);
+        
+        // Initialize pairing tab
+        wp_add_inline_script('inventory-sync-admin', '
+        jQuery(document).ready(function($) {
+            if (typeof window.app !== "undefined" && typeof window.app.loadPairs === "function") {
+                window.app.loadPairs();
+            }
+        });
+        ');
     }
     
     public function render_dashboard() {
@@ -326,18 +339,7 @@ class Inventory_Sync_Admin {
         }
         
         // جستجوی محصول (فقط محصولات ساده)
-        $endpoint = '/wp-json/wc/v3/products';
-        $params = [
-            'search' => $search,
-            'per_page' => 20,
-            'type' => 'simple'
-        ];
-        
-        // استفاده از reflection برای دسترسی به متد request داخل API
-        $reflection = new ReflectionMethod($api, 'request');
-        $reflection->setAccessible(true);
-        
-        $products = $reflection->invoke($api, 'GET', $endpoint, [], $params);
+        $products = $api->get_products_by_search($search);
         
         if (is_wp_error($products)) {
             wp_send_json_error($products->get_error_message());
@@ -359,5 +361,171 @@ class Inventory_Sync_Admin {
         }
         
         wp_send_json_success($simple_products);
+    }
+    
+    /**
+     * ✨ ایجاد جفت محصول
+     */
+    public function ajax_create_pair() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('عدم دسترسی');
+        }
+        
+        $site1_product_id = intval($_POST['site1_product_id'] ?? 0);
+        $site1_product_name = sanitize_text_field($_POST['site1_product_name'] ?? '');
+        $site1_sku = sanitize_text_field($_POST['site1_sku'] ?? '');
+        
+        $site2_product_id = intval($_POST['site2_product_id'] ?? 0);
+        $site2_product_name = sanitize_text_field($_POST['site2_product_name'] ?? '');
+        $site2_sku = sanitize_text_field($_POST['site2_sku'] ?? '');
+        
+        $sync_direction = sanitize_text_field($_POST['sync_direction'] ?? 'bidirectional');
+        
+        if (!$site1_product_id || !$site2_product_id) {
+            wp_send_json_error('شناسه‌های محصول مورد نیاز است');
+        }
+        
+        $result = Inventory_Sync_Database::create_product_pair(
+            $site1_product_id,
+            $site2_product_id,
+            $site1_product_name,
+            $site2_product_name,
+            $site1_sku,
+            $site2_sku,
+            $sync_direction
+        );
+        
+        if ($result) {
+            wp_send_json_success('جفت ایجاد شد');
+        } else {
+            wp_send_json_error('خطا در ایجاد جفت');
+        }
+    }
+    
+    /**
+     * ✨ دریافت تمام جفت‌های فعال
+     */
+    public function ajax_get_pairs() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('عدم دسترسی');
+        }
+        
+        $pairs = Inventory_Sync_Database::get_all_active_pairs();
+        
+        if (empty($pairs)) {
+            wp_send_json_success([]);
+            return;
+        }
+        
+        $formatted_pairs = [];
+        foreach ($pairs as $pair) {
+            // دریافت موجودی محصول‌ها
+            $site1_stock = $this->get_product_stock($pair->site1_product_id, 'site1');
+            $site2_stock = $this->get_product_stock($pair->site2_product_id, 'site2');
+            
+            $formatted_pairs[] = [
+                'id' => $pair->id,
+                'site1_product_id' => $pair->site1_product_id,
+                'site1_product_name' => $pair->site1_product_name,
+                'site1_stock' => $site1_stock,
+                'site2_product_id' => $pair->site2_product_id,
+                'site2_product_name' => $pair->site2_product_name,
+                'site2_stock' => $site2_stock,
+                'sync_direction' => $pair->sync_direction,
+                'last_sync' => $pair->last_sync,
+                'sync_count' => $pair->sync_count,
+                'is_active' => $pair->is_active
+            ];
+        }
+        
+        wp_send_json_success($formatted_pairs);
+    }
+    
+    /**
+     * ✨ Sync دستی یک جفت
+     */
+    public function ajax_sync_pair() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('عدم دسترسی');
+        }
+        
+        $pair_id = intval($_POST['pair_id'] ?? 0);
+        
+        if (!$pair_id) {
+            wp_send_json_error('شناسه جفت مورد نیاز است');
+        }
+        
+        $pair = Inventory_Sync_Database::get_product_pair($pair_id);
+        
+        if (!$pair) {
+            wp_send_json_error('جفت یافت نشد');
+        }
+        
+        // Sync کردن موجودی
+        $result = Inventory_Sync_Bidirectional::sync_pair_inventory($pair_id);
+        
+        if (is_wp_error($result)) {
+            wp_send_json_error($result->get_error_message());
+        }
+        
+        wp_send_json_success('جفت sync شد');
+    }
+    
+    /**
+     * ✨ حذف جفت
+     */
+    public function ajax_delete_pair() {
+        check_ajax_referer('inventory_sync_nonce');
+        
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('عدم دسترسی');
+        }
+        
+        $pair_id = intval($_POST['pair_id'] ?? 0);
+        
+        if (!$pair_id) {
+            wp_send_json_error('شناسه جفت مورد نیاز است');
+        }
+        
+        $result = Inventory_Sync_Database::delete_pair($pair_id);
+        
+        if ($result) {
+            wp_send_json_success('جفت حذف شد');
+        } else {
+            wp_send_json_error('خطا در حذف');
+        }
+    }
+    
+    /**
+     * ✨ دریافت موجودی محصول از یک سایت
+     */
+    private function get_product_stock($product_id, $site) {
+        if ($site === 'site1') {
+            $api = new Inventory_Sync_API(
+                Inventory_Sync_Settings::get_site1_url(),
+                Inventory_Sync_Settings::get_site1_key(),
+                Inventory_Sync_Settings::get_site1_secret()
+            );
+        } else {
+            $api = new Inventory_Sync_API(
+                Inventory_Sync_Settings::get_site2_url(),
+                Inventory_Sync_Settings::get_site2_key(),
+                Inventory_Sync_Settings::get_site2_secret()
+            );
+        }
+        
+        $product = $api->get_product($product_id);
+        
+        if (is_wp_error($product)) {
+            return 0;
+        }
+        
+        return isset($product['stock_quantity']) ? intval($product['stock_quantity']) : 0;
     }
 }

@@ -28,6 +28,15 @@
             $(document).on('click', '.select-product', this.handleSelectProduct.bind(this));
             $(document).on('click', '.transfer-selected-btn', this.transferSelected.bind(this));
             $(document).on('click', '.transfer-all-btn', this.transferAll.bind(this));
+            
+            // ✨ Product Pairing
+            $(document).on('keyup', '.product-search', this.searchProducts.bind(this));
+            $(document).on('click', '.product-search-result', this.selectSearchResult.bind(this));
+            $(document).on('click', '#create-pair-btn', this.createPair.bind(this));
+            $(document).on('click', '.tab-button', this.switchPairingTab.bind(this));
+            $(document).on('click', '#refresh-pairs-btn', this.loadPairs.bind(this));
+            $(document).on('click', '.pair-sync-btn', this.syncPair.bind(this));
+            $(document).on('click', '.pair-delete-btn', this.deletePair.bind(this));
         },
         
         loadInitialData: function() {
@@ -36,6 +45,7 @@
             this.loadTransferProducts();
             this.loadTransferredProducts();
             this.loadLogs();
+            this.loadPairs(); // ✨ بارگذاری جفت‌ها
         },
         
         // === Tab Management ===
@@ -461,6 +471,255 @@
             });
             
             $('.logs-list').html(html);
+        },
+        
+        // ===== ✨ Product Pairing Methods =====
+        
+        searchProducts: function(e) {
+            const $input = $(e.target);
+            const site = $input.attr('data-site');
+            const search = $input.val().trim();
+            const $results = $input.next('.product-results');
+            
+            if (search.length < 2) {
+                $results.html('');
+                return;
+            }
+            
+            $results.html('<div class="loading">جستجو...</div>');
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_search_products',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    search: search,
+                    site: site
+                },
+                success: (response) => {
+                    if (response.success) {
+                        this.renderSearchResults($results, response.data, site);
+                    } else {
+                        $results.html('<div class="error">' + response.data + '</div>');
+                    }
+                },
+                error: () => {
+                    $results.html('<div class="error">خطا در جستجو</div>');
+                }
+            });
+        },
+        
+        renderSearchResults: function($container, products, site) {
+            if (!products || products.length === 0) {
+                $container.html('<div class="no-results">محصولی یافت نشد</div>');
+                return;
+            }
+            
+            let html = '<ul class="product-search-results">';
+            products.forEach(product => {
+                html += `
+                    <li class="product-search-result" data-site="${site}" data-id="${product.id}" data-name="${product.name}" data-sku="${product.sku}">
+                        <strong>${product.name}</strong><br>
+                        <small>SKU: ${product.sku || 'N/A'} | موجودی: ${product.stock}</small>
+                    </li>
+                `;
+            });
+            html += '</ul>';
+            
+            $container.html(html);
+        },
+        
+        selectSearchResult: function(e) {
+            const $result = $(e.target).closest('.product-search-result');
+            const site = $result.attr('data-site');
+            const productId = $result.attr('data-id');
+            const productName = $result.attr('data-name');
+            const productSku = $result.attr('data-sku');
+            
+            if (site === 'site1') {
+                $('#site1_product').val(productName)
+                    .attr('data-id', productId)
+                    .attr('data-sku', productSku);
+                $('#site1_results').html('');
+            } else {
+                $('#site2_product').val(productName)
+                    .attr('data-id', productId)
+                    .attr('data-sku', productSku);
+                $('#site2_results').html('');
+            }
+        },
+        
+        createPair: function(e) {
+            e.preventDefault();
+            
+            const site1_id = $('#site1_product').attr('data-id');
+            const site1_name = $('#site1_product').val();
+            const site1_sku = $('#site1_product').attr('data-sku');
+            
+            const site2_id = $('#site2_product').attr('data-id');
+            const site2_name = $('#site2_product').val();
+            const site2_sku = $('#site2_product').attr('data-sku');
+            
+            const sync_direction = $('#sync_direction').val();
+            
+            if (!site1_id || !site2_id) {
+                alert('لطفاً هر دو محصول را انتخاب کنید');
+                return;
+            }
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_create_pair',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    site1_product_id: site1_id,
+                    site1_product_name: site1_name,
+                    site1_sku: site1_sku,
+                    site2_product_id: site2_id,
+                    site2_product_name: site2_name,
+                    site2_sku: site2_sku,
+                    sync_direction: sync_direction
+                },
+                success: (response) => {
+                    if (response.success) {
+                        $('#create-pair-status').text('✓ جفت ایجاد شد').addClass('success');
+                        setTimeout(() => {
+                            $('#site1_product').val('').removeAttr('data-id data-sku');
+                            $('#site2_product').val('').removeAttr('data-id data-sku');
+                            this.loadPairs();
+                            this.switchPairingTab({target: $('[data-tab="manage-pairs"]')});
+                        }, 1500);
+                    } else {
+                        $('#create-pair-status').text('✗ ' + response.data).addClass('error');
+                    }
+                },
+                error: () => {
+                    $('#create-pair-status').text('✗ خطا در ایجاد جفت').addClass('error');
+                }
+            });
+        },
+        
+        switchPairingTab: function(e) {
+            e.preventDefault();
+            const $btn = $(e.target);
+            const tabName = $btn.attr('data-tab');
+            
+            // فقط تب‌های داخل inventory-sync-tabs را تغییر بدهید
+            $btn.closest('.inventory-sync-tabs').find('.tab-button').removeClass('active');
+            $btn.addClass('active');
+            
+            // فقط تب‌های محتوا را تغییر بدهید
+            $btn.closest('.wrap').find('.tab-content').removeClass('active');
+            $('#' + tabName).addClass('active');
+        },
+        
+        loadPairs: function() {
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_get_pairs',
+                    _ajax_nonce: inventorySyncData.nonce
+                },
+                success: (response) => {
+                    if (response.success) {
+                        this.renderPairs(response.data);
+                    }
+                },
+                error: () => {
+                    $('#pairs-tbody').html('<tr><td colspan="9" class="text-center error">خطا در بارگذاری</td></tr>');
+                }
+            });
+        },
+        
+        renderPairs: function(pairs) {
+            if (!pairs || pairs.length === 0) {
+                $('#pairs-tbody').html('<tr><td colspan="9" style="text-align: center; padding: 20px;">هیچ جفتی ثبت نشده است</td></tr>');
+                return;
+            }
+            
+            let html = '';
+            pairs.forEach((pair, index) => {
+                const lastSync = pair.last_sync ? new Date(pair.last_sync).toLocaleString('fa-IR') : '-';
+                const statusClass = pair.is_active ? 'status-active' : 'status-inactive';
+                const statusText = pair.is_active ? '✓ فعال' : '✗ غیرفعال';
+                const syncDir = pair.sync_direction === 'bidirectional' ? '⟷' : (pair.sync_direction === 'site1_to_site2' ? '→' : '←');
+                
+                html += `
+                    <tr>
+                        <td>#${pair.id}</td>
+                        <td>${pair.site1_product_name || '-'}</td>
+                        <td>${pair.site1_stock !== undefined ? pair.site1_stock : '-'}</td>
+                        <td>${pair.site2_product_name || '-'}</td>
+                        <td>${pair.site2_stock !== undefined ? pair.site2_stock : '-'}</td>
+                        <td>${lastSync}</td>
+                        <td title="${pair.sync_direction}">${syncDir}</td>
+                        <td><span class="pair-status-badge ${statusClass}">${statusText}</span></td>
+                        <td>
+                            <button class="button button-small pair-sync-btn" data-pair-id="${pair.id}" style="padding: 5px 10px;">🔄</button>
+                            <button class="button button-small pair-delete-btn" data-pair-id="${pair.id}" style="padding: 5px 10px;">🗑️</button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            $('#pairs-tbody').html(html);
+        },
+        
+        syncPair: function(e) {
+            const pairId = $(e.target).attr('data-pair-id');
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_sync_pair',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    pair_id: pairId
+                },
+                success: (response) => {
+                    if (response.success) {
+                        alert('✓ Sync شد');
+                        this.loadPairs();
+                    } else {
+                        alert('✗ ' + response.data);
+                    }
+                },
+                error: () => {
+                    alert('✗ خطا');
+                }
+            });
+        },
+        
+        deletePair: function(e) {
+            if (!confirm('آیا مطمئن هستید؟')) {
+                return;
+            }
+            
+            const pairId = $(e.target).attr('data-pair-id');
+            
+            $.ajax({
+                url: inventorySyncData.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'inventory_sync_delete_pair',
+                    _ajax_nonce: inventorySyncData.nonce,
+                    pair_id: pairId
+                },
+                success: (response) => {
+                    if (response.success) {
+                        alert('✓ حذف شد');
+                        this.loadPairs();
+                    } else {
+                        alert('✗ ' + response.data);
+                    }
+                },
+                error: () => {
+                    alert('✗ خطا');
+                }
+            });
         }
     };
     

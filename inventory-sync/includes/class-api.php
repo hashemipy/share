@@ -48,6 +48,20 @@ class Inventory_Sync_API {
     }
     
     /**
+     * ✨ جستجوی محصولات
+     */
+    public function get_products_by_search($search, $per_page = 20) {
+        $endpoint = '/wp-json/wc/v3/products';
+        $params = [
+            'search' => $search,
+            'per_page' => $per_page,
+            'type' => 'simple'
+        ];
+        
+        return $this->request('GET', $endpoint, [], $params);
+    }
+    
+    /**
      * به‌روزرسانی موجودی
      */
     public function update_product_stock($product_id, $stock) {

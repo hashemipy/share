@@ -16,9 +16,9 @@ if (!current_user_can('manage_woocommerce')) {
     
     <!-- تب‌های تصفیه‌گر -->
     <div class="inventory-sync-tabs">
-        <button class="tab-button active" data-tab="create-pair">ایجاد جفت جدید</button>
-        <button class="tab-button" data-tab="manage-pairs">مدیریت جفت‌ها</button>
-        <button class="tab-button" data-tab="pair-logs">لاگ‌های هماهنگ‌سازی</button>
+        <button type="button" class="tab-button active" data-tab="create-pair">ایجاد جفت جدید</button>
+        <button type="button" class="tab-button" data-tab="manage-pairs">مدیریت جفت‌ها</button>
+        <button type="button" class="tab-button" data-tab="pair-logs">لاگ‌های هماهنگ‌سازی</button>
     </div>
     
     <!-- تب 1: ایجاد جفت جدید -->
@@ -200,35 +200,33 @@ if (!current_user_can('manage_woocommerce')) {
 .status-error {
     color: #d32f2f;
 }
-
-.pair-actions {
-    display: flex;
-    gap: 5px;
-}
-
-.pair-actions button {
-    padding: 4px 8px;
-    font-size: 12px;
-}
-
-.pair-status-badge {
-    display: inline-block;
-    padding: 4px 8px;
-    border-radius: 3px;
-    font-size: 12px;
-    font-weight: bold;
-}
-
-.status-active {
-    background: #d4edda;
-    color: #155724;
-}
-
-.status-inactive {
-    background: #f8d7da;
-    color: #721c24;
-}
 </style>
+
+<script type="text/javascript">
+jQuery(document).ready(function($) {
+    // تب switching برای جفت‌سازی محصولات
+    $(document).on('click', '.inventory-sync-tabs .tab-button', function(e) {
+        e.preventDefault();
+        const tabName = $(this).attr('data-tab');
+        
+        // تغییر وضعیت دکمه‌ها
+        $(this).closest('.inventory-sync-tabs').find('.tab-button').removeClass('active');
+        $(this).addClass('active');
+        
+        // تغییر محتوای تب‌ها
+        $(this).closest('.wrap').find('.tab-content').removeClass('active');
+        $('#' + tabName).addClass('active');
+    });
+    
+    // بارگذاری جفت‌ها هنگام بارگذاری صفحه
+    if ($('#pairs-tbody').length) {
+        const app = window.app || {};
+        if (app.loadPairs) {
+            app.loadPairs();
+        }
+    }
+});
+</script>
 
 <script>
 jQuery(document).ready(function($) {
