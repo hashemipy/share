@@ -890,20 +890,20 @@ class Product_Import_Export {
                 // نوع معلوم کریں
                 $product_type = $product_data['type'] ?? 'simple';
                 
-                // اگر متغیر ہے تو پہلے simple data save کریں
+                // ✅ Type کو ابھی ہی set کریں - یہ critical ہے
                 if ($product_type === 'variable') {
-                    // ابھی متغیر type set نہ کریں - یہ بعد میں ہوگا
-                    // ابھی صرف base data
-                    $product->set_sku($product_data['sku'] ?? '');
-                    $product->set_price($product_data['price'] ?? 0);
-                    $product->set_stock_quantity($product_data['stock_quantity'] ?? 0);
-                    $product->save(); // پہلا save
+                    $product->set_type('variable');
                 } else {
-                    // سادہ محصول
-                    $product->set_sku($product_data['sku'] ?? '');
-                    $product->set_price($product_data['price'] ?? 0);
-                    $product->set_stock_quantity($product_data['stock_quantity'] ?? 0);
+                    $product->set_type('simple');
                 }
+                
+                // Base data set کریں
+                $product->set_sku($product_data['sku'] ?? '');
+                $product->set_price($product_data['price'] ?? 0);
+                $product->set_stock_quantity($product_data['stock_quantity'] ?? 0);
+                
+                // پہلا save کریں تاکہ type محفوظ ہو جائے
+                $product->save();
                 
                 if (!empty($category_ids)) {
                     wp_set_post_terms($post_id, $category_ids, 'product_cat');
@@ -943,7 +943,7 @@ class Product_Import_Export {
                             $attr_ids[$attr_name] = $attr_id;
                             $result['attributes']++;
                             
-                            // ویژگی کو محصول میں شامل کریں
+                            // ✅ ویژگی کو محصول میں شامل کریں - صحیح طریقہ
                             $clean_attr_name = sanitize_title($attr_name);
                             $wc_attributes['pa_' . $clean_attr_name] = [
                                 'name' => 'pa_' . $clean_attr_name,
@@ -957,14 +957,10 @@ class Product_Import_Export {
                         }
                     }
                     
-                    // اب type کو variable سیٹ کریں اور attributes لگائیں
-                    wp_set_object_terms($post_id, array_keys($wc_attributes), 'pa_variable');
-                    
+                    // ✅ Attributes کو product میں set کریں
                     $product->set_attributes($wc_attributes);
+                    // اہم: دوبارہ save کریں تاکہ attributes محفوظ ہوں
                     $product->save();
-                    
-                    // اب type کو update کریں
-                    update_post_meta($post_id, '_product_type', 'variable');
                     
                     // متغیرات ایجاد کریں
                     if (!empty($product_data['variations'])) {
@@ -976,7 +972,7 @@ class Product_Import_Export {
                         }
                     }
                 } else {
-                    // سادہ محصول کو save کریں
+                    // ✅ سادہ محصول کو ابھی save کریں (متغیر والے نے پہلے ہی save کر دیا)
                     $product->save();
                 }
                 $result['created']++;
@@ -1012,12 +1008,26 @@ class Product_Import_Export {
         try {
             $parent_id = 0;
             
-            // پدر دسته‌بندی را پردازش کنید اگر موجود باشد
+            // ✅ پدر دسته‌بندی کو recursive طریقے سے ایجاد کریں
+            // اہم: اگر parent_id موجود ہے تو پہلے parent کو create کریں
             if (!empty($cat_data['parent_id']) && $cat_data['parent_id'] > 0) {
-                // اول پدر را بررسی کنید
-                $parent_term = get_term($cat_data['parent_id'], 'product_cat');
-                if ($parent_term && !is_wp_error($parent_term)) {
-                    $parent_id = $parent_term->term_id;
+                // پہلے parent دسته‌بندی کی معلومات حاصل کریں
+                // (یہاں فرض ہے کہ آپ کے پاس parent کی معلومات ہے)
+                // اگر parent کے لیے data موجود نہیں ہے تو صرف ID سے چیک کریں
+                $parent_slug = 'parent-' . $cat_data['parent_id'];
+                $parent_term = term_exists($parent_slug, 'product_cat');
+                
+                if (!$parent_term) {
+                    // Parent کو ایجاد کریں
+                    $parent_term = wp_insert_term(
+                        'Parent Category ' . $cat_data['parent_id'],
+                        'product_cat',
+                        ['slug' => $parent_slug]
+                    );
+                }
+                
+                if (!is_wp_error($parent_term)) {
+                    $parent_id = is_array($parent_term) ? $parent_term['term_id'] : $parent_term;
                 }
             }
             
@@ -1034,12 +1044,19 @@ class Product_Import_Export {
             }
             
             // دسته‌بندی را ایجاد یا دریافت کن
-            $term = term_exists($slug, 'product_cat');
+            // ✅ دسته‌بندی کو name سے تلاش کریں
+            $term = term_exists($name, 'product_cat');
             
             if ($term) {
+                $existing_term = get_term($term, 'product_cat');
+                // اگر parent مختلف ہے تو update کریں
+                if ($existing_term && $existing_term->parent != $parent_id) {
+                    wp_update_term($term, 'product_cat', ['parent' => $parent_id]);
+                }
                 return is_array($term) ? $term['term_id'] : $term;
             }
             
+            // ✅ نیا دسته‌بندی ایجاد کریں
             $term = wp_insert_term(
                 $name,
                 'product_cat',
